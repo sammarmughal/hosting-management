@@ -1,0 +1,388 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Dark mode is not in v1 (docs/06 §1). The variant is kept so shadcn's
+   dark: classes compile; nothing sets .dark yet. */
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------
+   1. Design tokens (docs/06 §1, adjusted per docs/12 §3)
+   ------------------------------------------------------------------ */
+:root {
+  /* Brand */
+  --brand-900: #0f2a44;
+  --brand-800: #173d5f; /* primary hover */
+  --brand-700: #1f4e79; /* primary action, links */
+  --brand-500: #2e75b6; /* focus ring */
+  --brand-100: #e6eff8;
+  --brand-50: #f3f7fc;
+
+  /* Neutrals */
+  --ink: #111827; /* main text */
+  --ink-muted: #6b7280; /* secondary text */
+  --ink-subtle: #9ca3af; /* placeholders, disabled */
+  --line: #e6e8ec; /* hairlines */
+  --line-strong: #d5d9e0; /* input borders */
+  --surface: #ffffff; /* cards, tables */
+  --surface-hover: #f9fafb; /* row hover */
+  --surface-subtle: #f3f4f6; /* muted fills, active nav */
+  --bg: #f7f8fa; /* page background */
+  --sidebar-bg: #fbfbfc;
+  --overlay: rgb(17 24 39 / 0.32);
+
+  /* Status: dot / text on tint / tint. Keep in sync with docs/04 §2.
+     *-fg shades are darkened so text on the tint passes 4.5:1. */
+  --green: #1e9e57;
+  --green-fg: #177a45;
+  --green-bg: #e7f6ee;
+  --orange: #e8870e;
+  --orange-fg: #a35400;
+  --orange-bg: #fdf1e1;
+  --red: #d93636;
+  --red-fg: #b42323;
+  --red-bg: #fce9e9;
+  --expired: #7a1c1c;
+  --expired-fg: #7a1c1c;
+  --expired-bg: #f3e3e3;
+  --cancelled: #7a8290;
+  --cancelled-fg: #5b6472;
+  --cancelled-bg: #eef0f3;
+
+  /* Solid fills for the success/destructive buttons (white text ≥ 4.5:1) */
+  --success: var(--green-fg);
+  --success-hover: #12663a;
+  --danger: var(--red);
+  --danger-hover: var(--red-fg);
+
+  /* WhatsApp icon on white (3:1). The button itself stays neutral. */
+  --whatsapp: #1da851;
+
+  /* Shape and depth */
+  --radius: 8px;
+  --elev-xs: 0 1px 2px rgb(16 24 40 / 0.04);
+  --elev-md: 0 4px 12px rgb(16 24 40 / 0.08), 0 1px 2px rgb(16 24 40 / 0.04);
+  --elev-lg: 0 12px 32px rgb(16 24 40 / 0.12), 0 2px 6px rgb(16 24 40 / 0.04);
+
+  --sidebar-w: 240px;
+  --topbar-h: 56px;
+
+  /* shadcn semantic variables, mapped onto the tokens above */
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand-700);
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-subtle);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-subtle);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--surface-subtle);
+  --accent-foreground: var(--ink);
+  --destructive: var(--red);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--brand-500);
+}
+
+/* ------------------------------------------------------------------
+   2. Tailwind theme. The default palette is removed on purpose so only
+      tokens can be used (no hard-coded greens or indigos).
+   ------------------------------------------------------------------ */
+@theme inline {
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  --color-brand-900: var(--brand-900);
+  --color-brand-800: var(--brand-800);
+  --color-brand-700: var(--brand-700);
+  --color-brand-500: var(--brand-500);
+  --color-brand-100: var(--brand-100);
+  --color-brand-50: var(--brand-50);
+
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-page: var(--bg);
+  --color-sidebar: var(--sidebar-bg);
+  --color-overlay: var(--overlay);
+
+  --color-green: var(--green);
+  --color-green-fg: var(--green-fg);
+  --color-green-bg: var(--green-bg);
+  --color-orange: var(--orange);
+  --color-orange-fg: var(--orange-fg);
+  --color-orange-bg: var(--orange-bg);
+  --color-red: var(--red);
+  --color-red-fg: var(--red-fg);
+  --color-red-bg: var(--red-bg);
+  --color-expired: var(--expired);
+  --color-expired-fg: var(--expired-fg);
+  --color-expired-bg: var(--expired-bg);
+  --color-cancelled: var(--cancelled);
+  --color-cancelled-fg: var(--cancelled-fg);
+  --color-cancelled-bg: var(--cancelled-bg);
+
+  --color-success: var(--success);
+  --color-success-hover: var(--success-hover);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+
+  --color-whatsapp: var(--whatsapp);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Type: Geist via next/font (self-hosted). Scale per docs/12 §2. */
+  --font-sans:
+    var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono:
+    var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-heading: var(--font-sans);
+
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14px;
+  --text-base--line-height: 20px;
+  --text-md: 16px;
+  --text-md--line-height: 24px;
+  --text-lg: 18px;
+  --text-lg--line-height: 26px;
+  --text-xl: 22px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 34px;
+
+  /* Radius: 4 menu items, 6 controls, 8 surfaces. Larger steps are
+     capped at 8px so rounded-2xl/3xl can't creep in (docs/12 §4). */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+  --radius-3xl: 8px;
+  --radius-4xl: 8px;
+
+  --shadow-xs: var(--elev-xs);
+  --shadow-sm: var(--elev-xs);
+  --shadow-md: var(--elev-md);
+  --shadow-lg: var(--elev-lg);
+  --shadow-xl: var(--elev-lg);
+  --shadow-2xl: var(--elev-lg);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ------------------------------------------------------------------
+   3. Base
+   ------------------------------------------------------------------ */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply bg-page font-sans;
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-page text-base text-ink antialiased;
+    /* All numbers line up in columns and don't jitter (docs/12 §2). */
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: rgb(31 78 121 / 0.15);
+    color: inherit;
+  }
+
+  /* Default focus ring for anything that doesn't draw its own
+     (components with outline-none + ring-* override this). */
+  :focus-visible {
+    outline: 2px solid var(--brand-500);
+    outline-offset: 2px;
+  }
+
+  a {
+    text-underline-offset: 3px;
+  }
+
+  /* One icon stroke weight everywhere (docs/12 §8) */
+  svg.lucide {
+    stroke-width: 1.75;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
+  /* Subtle scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--line-strong);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ink-subtle);
+  }
+}
+
+/* ------------------------------------------------------------------
+   4. Components
+   ------------------------------------------------------------------ */
+@layer components {
+  /* Timer pill (docs/06 §3.1, docs/12 §5). Min-widths are in ch of the
+     mono font so a ticking column never changes width. */
+  .timer-pill {
+    --pill-dot: 6px;
+    --pill-pad: 8px;
+    --pill-gap: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--pill-gap);
+    height: 24px;
+    min-width: calc(16ch + var(--pill-dot) + var(--pill-gap) + 2 * var(--pill-pad));
+    padding: 0 var(--pill-pad);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .timer-pill--sm {
+    min-width: calc(7ch + var(--pill-dot) + var(--pill-gap) + 2 * var(--pill-pad));
+  }
+  .timer-pill--lg {
+    --pill-dot: 8px;
+    --pill-pad: 12px;
+    --pill-gap: 8px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .timer-dot {
+    flex: none;
+    width: var(--pill-dot);
+    height: var(--pill-dot);
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  .timer-pill.is-green {
+    background: var(--green-bg);
+    color: var(--green-fg);
+  }
+  .timer-pill.is-green .timer-dot {
+    background: var(--green);
+  }
+  .timer-pill.is-orange {
+    background: var(--orange-bg);
+    color: var(--orange-fg);
+  }
+  .timer-pill.is-orange .timer-dot {
+    background: var(--orange);
+  }
+  .timer-pill.is-red {
+    background: var(--red-bg);
+    color: var(--red-fg);
+  }
+  .timer-pill.is-red .timer-dot {
+    background: var(--red);
+    animation: timer-dot-pulse 2s ease-in-out infinite;
+  }
+  .timer-pill.is-expired {
+    background: var(--expired-bg);
+    color: var(--expired-fg);
+  }
+  .timer-pill.is-expired .timer-dot {
+    background: var(--expired);
+  }
+  .timer-pill.is-cancelled {
+    background: var(--cancelled-bg);
+    color: var(--cancelled-fg);
+  }
+  .timer-pill.is-cancelled .timer-dot {
+    background: var(--cancelled);
+  }
+
+  @keyframes timer-dot-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  /* Small status dot used by badges, stat cards and nav */
+  .status-dot {
+    display: inline-block;
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+  }
+}
+
+/* ------------------------------------------------------------------
+   5. Motion: respect reduced-motion (no pulse, instant transitions)
+   ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .timer-pill.is-red .timer-dot {
+    animation: none;
+  }
+}

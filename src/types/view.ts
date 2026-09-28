@@ -1,0 +1,69 @@
+// View-model types (docs/06 §7.1). The mock layer builds these in Phase 1
+// and the Prisma layer builds them later, so components never change.
+import type { ISODate } from "@/lib/domain/dates"
+
+export type { ISODate }
+
+export type Colour = "green" | "orange" | "red" | "expired" | "cancelled"
+
+export interface ServiceRow {
+  id: number
+  clientId: number
+  clientName: string
+  company?: string | null
+  email?: string | null
+  phone?: string | null // phone = normalised digits
+  domain: string
+  planLabel?: string | null
+  startDate: ISODate
+  renewalDate: ISODate
+  chargeAmount: string
+  currency: string // amount as string (Decimal-safe)
+  status: "active" | "cancelled"
+  remindersEnabled: boolean
+  daysLeft: number
+  colour: Colour
+}
+
+export interface ReminderRow {
+  id: string
+  serviceId: number
+  stage: number
+  channel: "email" | "whatsapp"
+  recipient: "client" | "admin"
+  status: "pending" | "sent" | "opened" | "failed" | "skipped"
+  lastError?: string | null
+  sentAt?: string | null
+  waLink?: string | null // prebuilt for whatsapp rows
+  service: ServiceRow
+}
+
+export interface DashboardStats {
+  active: number
+  expiring30: number
+  urgent7: number
+  expired: number
+  expected30: { currency: string; total: string }[]
+}
+
+export interface NotificationItem {
+  id: string
+  type: string
+  title: string
+  createdAt: string
+  isRead: boolean
+  href?: string
+}
+export interface PaymentRow {
+  id: number
+  serviceId: number
+  domain: string
+  clientName: string
+  amount: string
+  currency: string
+  paidOn: ISODate
+  method: string
+  reference?: string | null
+  periodFrom: ISODate
+  periodTo: ISODate
+}
