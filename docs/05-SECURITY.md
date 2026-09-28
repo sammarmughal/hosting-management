@@ -43,7 +43,7 @@ export async function requireAdmin(): Promise<{ admin: Admin; session: Session }
 }
 ```
 - `requireAdmin()` is called in **`(app)/layout.tsx` AND at the top of every Server Action and route handler.** Layouts alone are not enough, because Server Actions can be called directly.
-- `middleware.ts` only does a fast "cookie present?" redirect for a better user experience. **It is not the security boundary.**
+- `proxy.ts` (Next.js 16 renamed `middleware.ts` to `proxy.ts`) only does a fast "cookie present?" redirect for a better user experience. **It is not the security boundary.** `requireAdmin()` in the layout and in every Server Action and route handler is the real check.
 - A new session ID is issued at login and again when 2FA passes (the old row is deleted).
 - Logout → delete the session row and clear the cookie. Settings has a "Log out all sessions" button → deletes all rows.
 - Expired rows are cleaned up opportunistically at login (`deleteMany where expiresAt < now`).
@@ -96,7 +96,7 @@ export async function requireAdmin(): Promise<{ admin: Admin; session: Session }
 
 ## 7. HTTP security headers
 
-Set in `next.config.ts` → `headers()` for all routes, with the CSP generated in `middleware.ts` using a nonce:
+Set in `next.config.ts` → `headers()` for all routes, with the CSP generated in `proxy.ts` using a nonce:
 
 ```
 Strict-Transport-Security: max-age=31536000; includeSubDomains

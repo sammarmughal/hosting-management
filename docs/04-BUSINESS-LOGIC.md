@@ -41,10 +41,13 @@ export function addDays(d: ISODate, n: number): ISODate {
   return new Date(Date.parse(d + 'T00:00:00Z') + n * 86_400_000).toISOString().slice(0, 10);
 }
 
-// '2026-09-30' → '30 Sep 2026'
-export const formatDatePK = (d: ISODate) =>
-  new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
-    .format(new Date(d + 'T00:00:00Z'));
+// '2026-09-30' → '30 Sep 2026', '2026-01-05' → '5 Jan 2026' (day without a leading zero).
+// Built from a fixed month list, not Intl: newer ICU data prints "Sept" for en-GB.
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+export const formatDatePK = (d: ISODate) => {
+  const [y, m, day] = d.split('-').map(Number);
+  return `${day} ${MONTHS[m - 1]} ${y}`;
+};
 ```
 
 ### 1.2 Days left

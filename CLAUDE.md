@@ -15,7 +15,7 @@ Next.js App Router · TypeScript strict · Tailwind + shadcn/ui + lucide-react �
 2. **No WhatsApp API.** Only `https://wa.me/<digits>?text=<encodeURIComponent(msg)>` links.
 3. **Security** (`docs/05-SECURITY.md`):
    - **Every Server Action and route handler starts with `await requireAdmin()`** (the auth actions use the password-stage guard). The layout check alone is NOT enough.
-   - `middleware.ts` is only a convenience redirect, never the security boundary.
+   - `proxy.ts` (Next.js 16's rename of `middleware.ts`) is only a convenience redirect, never the security boundary.
    - Validate every action input with zod. Prisma only, and never `$queryRawUnsafe`.
    - Never use `dangerouslySetInnerHTML`, except for the locally generated QR SVG.
    - No third-party scripts, fonts, analytics or QR services. No secrets in `NEXT_PUBLIC_*`.

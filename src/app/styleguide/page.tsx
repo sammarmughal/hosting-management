@@ -808,7 +808,7 @@ const ROWS: {
     name: "Karachi Auto Parts",
     sub: "Imran Qureshi",
     domain: "karachiautoparts.pk",
-    renewal: "02 Mar 2027",
+    renewal: "2 Mar 2027",
     charge: "PKR 12,000",
     pill: { colour: "cancelled", text: "Cancelled", label: "cancelled" },
   },

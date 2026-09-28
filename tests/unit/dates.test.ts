@@ -74,7 +74,8 @@ describe("addDays", () => {
 describe("formatDatePK", () => {
   it.each([
     ["2026-09-30", "30 Sep 2026"],
-    ["2026-01-05", "05 Jan 2026"],
+    ["2026-01-05", "5 Jan 2026"],
+    ["2026-10-01", "1 Oct 2026"],
     ["2027-12-31", "31 Dec 2027"],
   ])("%s → %s", (d, expected) => {
     expect(formatDatePK(d)).toBe(expected)

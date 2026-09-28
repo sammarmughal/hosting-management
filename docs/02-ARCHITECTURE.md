@@ -68,7 +68,7 @@ hosting-renewal/
 │   ├── create-admin.ts             ← CLI: npm run create-admin
 │   └── reset-2fa.ts                ← CLI: npm run reset-2fa
 ├── src/
-│   ├── middleware.ts               ← auth gate (cookie present?) + security headers + CSP nonce
+│   ├── proxy.ts                    ← convenience redirect (cookie present?) + security headers + CSP nonce
 │   ├── app/
 │   │   ├── layout.tsx              ← <html>, fonts (local/system), Toaster
 │   │   ├── globals.css             ← Tailwind + design tokens
@@ -157,10 +157,10 @@ hosting-renewal/
 
 ## 4. Request lifecycle
 
-1. **`middleware.ts`** (runs on every request except static assets):
+1. **`proxy.ts`** (Next.js 16's name for `middleware.ts`; exports `proxy()`; runs on every request except static assets):
    - Adds the security headers and a per-request **CSP nonce**.
    - If there is no session cookie and the path is not public (`/login`, `/2fa*`, `/forgot`, `/reset/*`, `/api/health`), redirect to `/login`.
-   - Middleware only checks that the cookie **exists**. The real validation happens in the server (see the next step), because middleware cannot use Prisma reliably.
+   - The proxy only checks that the cookie **exists**. It is a convenience redirect, **never the security boundary**: the real validation is `requireAdmin()` in the layout (next step) and at the top of every Server Action and route handler.
 2. **`(app)/layout.tsx`** calls `await requireAdmin()`, which loads the session from the DB, checks the idle and absolute timeouts and `stage === 'full'`, then refreshes `last_seen_at`. Otherwise it calls `redirect('/login')`.
 3. Pages are **Server Components** that read data directly through `lib/server/*`.
 4. Mutations are **Server Actions** in `src/actions/*`. **Every action starts with `await requireAdmin()`**, then validates the input with zod, runs the logic, calls `revalidatePath()` and returns `{ ok, error?, data? }`.

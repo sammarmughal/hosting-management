@@ -72,7 +72,7 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 - [ ] `scripts/create-admin.ts` and `scripts/reset-2fa.ts` (run with `tsx`).
 - [ ] `lib/server/session.ts` (DB sessions, `requireAdmin`, `requirePasswordStage`), `auth.ts` and `throttle.ts`.
 - [ ] `actions/auth.ts`, and connect the login, 2FA, setup (real QR SVG + recovery codes), forgot and reset pages.
-- [ ] `middleware.ts`: cookie-presence redirect + CSP nonce + security headers. Headers also go in `next.config.ts`.
+- [ ] `proxy.ts` (Next.js 16's `middleware.ts`): cookie-presence redirect + CSP nonce + security headers. Headers also go in `next.config.ts`.
 - [ ] `(app)/layout.tsx` calls `requireAdmin()`. Add a lint rule or a code-review checklist item: **every action calls `requireAdmin()` first**.
 - [ ] Audit log helper, with auth events logged.
 

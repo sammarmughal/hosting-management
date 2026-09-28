@@ -73,8 +73,8 @@ export const daysLeft = (renewal: ISODate, today: ISODate): number =>
 /** The timer target: end of the renewal day in Pakistan time. */
 export const expiresAtIso = (renewal: ISODate): string => `${renewal}T23:59:59+05:00`
 
-/** '2026-09-30' → '30 Sep 2026' */
+/** '2026-09-30' → '30 Sep 2026', '2026-01-05' → '5 Jan 2026' */
 export function formatDatePK(d: ISODate): string {
   const [y, m, day] = parts(d)
-  return `${pad2(day)} ${MONTHS[m - 1]} ${y}`
+  return `${day} ${MONTHS[m - 1]} ${y}`
 }

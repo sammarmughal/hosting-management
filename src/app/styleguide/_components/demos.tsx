@@ -100,7 +100,7 @@ export function ToastDemo() {
 
 export function RenewDialogDemo() {
   const [extendFrom, setExtendFrom] = React.useState("renewal")
-  const newDate = extendFrom === "renewal" ? "02 Oct 2027" : "28 Sep 2027"
+  const newDate = extendFrom === "renewal" ? "2 Oct 2027" : "28 Sep 2027"
 
   return (
     <Dialog>
@@ -111,7 +111,7 @@ export function RenewDialogDemo() {
         <DialogHeader>
           <DialogTitle>Renew noordental.pk</DialogTitle>
           <DialogDescription>
-            Current renewal date: 02 Oct 2026 (4 days left)
+            Current renewal date: 2 Oct 2026 (4 days left)
           </DialogDescription>
         </DialogHeader>
 
@@ -161,7 +161,7 @@ export function RenewDialogDemo() {
             <Label className="font-normal">
               <RadioGroupItem value="renewal" />
               Current renewal date
-              <span className="text-ink-muted">→ 02 Oct 2027</span>
+              <span className="text-ink-muted">→ 2 Oct 2027</span>
             </Label>
             <Label className="font-normal">
               <RadioGroupItem value="today" />
