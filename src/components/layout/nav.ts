@@ -27,23 +27,19 @@ export function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-// Page titles shown in the topbar. Pages set the same text in their
-// metadata for the browser tab ("Clients · Renewals").
-const TITLES: [RegExp, string][] = [
-  [/^\/dashboard$/, "Dashboard"],
-  [/^\/clients$/, "Clients"],
-  [/^\/clients\/new$/, "Add client"],
-  [/^\/clients\/[^/]+\/edit$/, "Edit client"],
-  [/^\/clients\/[^/]+\/services\/new$/, "Add service"],
-  [/^\/clients\/[^/]+$/, "Client"],
-  [/^\/services\/[^/]+\/edit$/, "Edit service"],
-  [/^\/reminders$/, "Reminders"],
-  [/^\/payments$/, "Payments"],
-  [/^\/notifications$/, "Notifications"],
-  [/^\/import$/, "Import"],
-  [/^\/settings$/, "Settings"],
-]
+// Plain topbar titles for top-level pages. Detail and edit pages show a
+// breadcrumb from the @crumbs slot instead, and their own <PageHeader> H1.
+// Pages set the same text in their metadata ("Clients · Renewals").
+const TITLES: Record<string, string> = {
+  "/dashboard": "Dashboard",
+  "/clients": "Clients",
+  "/reminders": "Reminders",
+  "/payments": "Payments",
+  "/notifications": "Notifications",
+  "/import": "Import",
+  "/settings": "Settings",
+}
 
 export function titleFor(pathname: string): string {
-  return TITLES.find(([re]) => re.test(pathname))?.[1] ?? "Renewals"
+  return TITLES[pathname] ?? "Renewals"
 }

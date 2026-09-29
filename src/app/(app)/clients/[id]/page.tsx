@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
+import { PageHeader } from "@/components/page-header"
 import { PagePlaceholder } from "@/components/page-placeholder"
 import { getClient } from "@/lib/data"
 
@@ -20,9 +21,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ClientPage({ params }: Props) {
   const client = await load(params)
   return (
-    <PagePlaceholder>
-      Contact details for {client.name}, services with live timers, and the Payments,
-      Reminder log and Activity tabs.
-    </PagePlaceholder>
+    <>
+      <PageHeader title={client.name} description={client.company} />
+      <PagePlaceholder>
+        Contact details, services with live timers, and the Payments, Reminder log and
+        Activity tabs.
+      </PagePlaceholder>
+    </>
   )
 }

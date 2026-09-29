@@ -6,28 +6,37 @@ import { GlobalSearch } from "@/components/layout/global-search"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { Button } from "@/components/ui/button"
 
+/**
+ * Top-level pages show a plain title (the page's H1). Detail and edit pages
+ * render a breadcrumb into `crumbs` (the @crumbs slot); when it is present,
+ * CSS hides the plain title and, on mobile, the menu button (the breadcrumb
+ * brings its own back arrow). Server-rendered, so nothing flashes.
+ */
 export function Topbar({
   title,
+  crumbs,
   unread,
   onOpenMenu,
 }: {
   title: string
+  crumbs: React.ReactNode
   unread: number
   onOpenMenu: () => void
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-page pt-[env(safe-area-inset-top)]">
-      <div className="flex h-14 max-w-320 items-center gap-2 px-2 sm:px-4 md:h-15 md:gap-4 md:px-6 lg:px-8">
+      <div className="group/topbar flex h-14 max-w-7xl items-center gap-2 px-2 sm:px-4 md:h-15 md:gap-4 md:px-6 lg:px-8">
         <Button
           variant="ghost"
           size="icon"
           aria-label="Open menu"
           onClick={onOpenMenu}
-          className="size-11 md:hidden"
+          className="size-11 group-has-data-breadcrumb/topbar:hidden md:hidden"
         >
           <MenuIcon className="size-5" />
         </Button>
-        <h1 className="min-w-0 flex-1 truncate text-md font-semibold text-ink md:text-xl md:tracking-[-0.01em]">
+        {crumbs}
+        <h1 className="min-w-0 flex-1 truncate text-md font-semibold text-ink group-has-data-breadcrumb/topbar:hidden md:text-xl md:tracking-[-0.01em]">
           {title}
         </h1>
         <GlobalSearch className="hidden w-64 md:block lg:w-72" />

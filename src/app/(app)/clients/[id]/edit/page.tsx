@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
+import { PageHeader } from "@/components/page-header"
 import { PagePlaceholder } from "@/components/page-placeholder"
 import { getClient } from "@/lib/data"
 
@@ -19,5 +20,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function EditClientPage({ params }: Props) {
   const client = await load(params)
-  return <PagePlaceholder>The client form for {client.name}.</PagePlaceholder>
+  return (
+    <>
+      <PageHeader title="Edit client" description={client.name} />
+      <PagePlaceholder>
+        The client form: name, company, email, WhatsApp phone and notes.
+      </PagePlaceholder>
+    </>
+  )
 }

@@ -21,9 +21,12 @@ const FAB_PATHS = new Set(["/dashboard", "/clients"])
 // topbar, and on mobile a drawer, bottom nav and floating "Add client".
 export function AppShell({
   summary,
+  crumbs,
   children,
 }: {
   summary: ShellSummary
+  /** Breadcrumb from the @crumbs slot (empty on top-level pages). */
+  crumbs: React.ReactNode
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -42,6 +45,7 @@ export function AppShell({
       <Sidebar pathname={pathname} summary={summary} />
       <Topbar
         title={titleFor(pathname)}
+        crumbs={crumbs}
         unread={summary.unreadNotifications}
         onOpenMenu={() => setNavOpen(true)}
       />
@@ -49,7 +53,7 @@ export function AppShell({
       <main
         id="main"
         tabIndex={-1}
-        className="max-w-320 px-4 pt-6 pb-[calc(8.5rem+env(safe-area-inset-bottom))] outline-none sm:px-6 md:pt-6 md:pb-10 lg:px-8 lg:pt-8"
+        className="max-w-7xl px-4 pt-6 pb-[calc(8.5rem+env(safe-area-inset-bottom))] outline-none sm:px-6 md:pt-6 md:pb-10 lg:px-8 lg:pt-8"
       >
         {children}
       </main>

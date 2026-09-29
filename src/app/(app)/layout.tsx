@@ -7,12 +7,21 @@ export const dynamic = "force-dynamic"
 
 // Phase 1: no auth yet. Phase 3 adds `await requireAdmin()` here (and in
 // every action), per docs/05 §2.
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function AppLayout({
+  children,
+  crumbs,
+}: {
+  children: React.ReactNode
+  /** @crumbs slot: the topbar breadcrumb for detail and edit pages. */
+  crumbs: React.ReactNode
+}) {
   const [settings, summary] = await Promise.all([getSettings(), getShellSummary()])
 
   return (
     <SettingsProvider thresholds={settings.thresholds}>
-      <AppShell summary={summary}>{children}</AppShell>
+      <AppShell summary={summary} crumbs={crumbs}>
+        {children}
+      </AppShell>
     </SettingsProvider>
   )
 }

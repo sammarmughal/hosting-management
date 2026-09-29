@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
+import { PageHeader } from "@/components/page-header"
 import { PagePlaceholder } from "@/components/page-placeholder"
 import { getService } from "@/lib/data"
 
@@ -19,5 +20,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function EditServicePage({ params }: Props) {
   const service = await load(params)
-  return <PagePlaceholder>The service form for {service.domain}.</PagePlaceholder>
+  return (
+    <>
+      <PageHeader title="Edit service" description={service.domain} />
+      <PagePlaceholder>
+        The service form: domain, plan, dates, charge and reminders.
+      </PagePlaceholder>
+    </>
+  )
 }
