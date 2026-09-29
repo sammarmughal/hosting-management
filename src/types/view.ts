@@ -25,6 +25,8 @@ export interface ServiceRow {
   colour: Colour
   /** Added in Phase 1: prebuilt client WhatsApp link (docs/07 §2), null without a valid phone. */
   waLink?: string | null
+  /** Added in Phase 1: service notes (for the edit form). */
+  notes?: string | null
 }
 
 export interface ReminderRow {
@@ -67,6 +69,15 @@ export interface QueueItem {
   stage: number
   email: ReminderRow | null
   whatsapp: ReminderRow | null
+}
+
+/** A line in the client Activity timeline (the audit log, later). */
+export interface ActivityItem {
+  id: string
+  /** ISO timestamp */
+  at: string
+  kind: "service" | "payment" | "email" | "whatsapp" | "failed" | "skipped"
+  text: string
 }
 
 export interface ShellSummary {

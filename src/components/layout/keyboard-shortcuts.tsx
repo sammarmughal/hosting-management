@@ -35,9 +35,14 @@ export function KeyboardShortcuts() {
       if (isTyping(e.target) || overlayOpen()) return
 
       if (e.key === "/") {
-        const search = document.getElementById(GLOBAL_SEARCH_ID)
-        // Hidden on mobile (display: none → no offsetParent).
-        if (search && search.offsetParent !== null) {
+        // The page's own search (e.g. Clients) wins over the topbar one.
+        // Hidden inputs (display: none) have no offsetParent.
+        const search = [
+          ...document.querySelectorAll<HTMLInputElement>(
+            `[data-search-shortcut], #${GLOBAL_SEARCH_ID}`
+          ),
+        ].find((el) => el.offsetParent !== null)
+        if (search) {
           e.preventDefault()
           search.focus()
         }

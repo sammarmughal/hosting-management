@@ -17,11 +17,13 @@ export function Topbar({
   crumbs,
   unread,
   onOpenMenu,
+  hideSearch = false,
 }: {
   title: string
   crumbs: React.ReactNode
   unread: number
   onOpenMenu: () => void
+  hideSearch?: boolean
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-page pt-[env(safe-area-inset-top)]">
@@ -39,7 +41,8 @@ export function Topbar({
         <h1 className="min-w-0 flex-1 truncate text-md font-semibold text-ink group-has-data-breadcrumb/topbar:hidden md:text-xl md:tracking-[-0.01em]">
           {title}
         </h1>
-        <GlobalSearch className="hidden w-64 md:block lg:w-72" />
+        {/* The Clients page has its own search, so the topbar one would be a duplicate there. */}
+        {!hideSearch && <GlobalSearch className="hidden w-64 md:block lg:w-72" />}
         <NotificationBell initialUnread={unread} />
       </div>
     </header>

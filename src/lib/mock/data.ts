@@ -37,19 +37,23 @@ export const MOCK_SETTINGS = {
 
 /* Seeds ------------------------------------------------------------- */
 
-interface ServiceSeed {
+export interface ServiceSeed {
   id: number
   domain: string
-  plan: string
-  /** Days left, relative to today. */
-  days: number
+  plan: string | null
+  /** Days left, relative to today (seed data). */
+  days?: number
+  /** Absolute dates (services created or renewed during the session). */
+  renewalDate?: ISODate
+  startDate?: ISODate
   amount: string
   currency?: string
   status?: "active" | "cancelled"
   remindersEnabled?: boolean
+  notes?: string | null
 }
 
-interface ClientSeed {
+export interface ClientSeed {
   id: number
   name: string
   company: string | null
@@ -442,16 +446,70 @@ export interface MockData {
   lastCheckAt: string
 }
 
+/* Session store ----------------------------------------------------- */
+
+// Phase 1 only: create/edit/renew/delete change this in-memory copy, so the
+// UI behaves like the real app during a dev session. It lives on globalThis
+// to survive hot reloads and resets when the server restarts.
+
+export interface StoredPayment {
+  id: number
+  serviceId: number
+  amount: string
+  paidOn: ISODate
+  method: string
+  reference: string | null
+  periodFrom: ISODate
+  periodTo: ISODate
+}
+
+export interface ReminderOverride {
+  status: ReminderRow["status"]
+  sentAt?: string | null
+  lastError?: string | null
+}
+
+export interface MockStore {
+  clients: ClientSeed[]
+  payments: StoredPayment[]
+  reminders: Map<string, ReminderOverride>
+  nextId: number
+}
+
+const globalStore = globalThis as typeof globalThis & { __renewalsMockStore?: MockStore }
+
+export function mockStore(): MockStore {
+  globalStore.__renewalsMockStore ??= {
+    clients: structuredClone(CLIENTS),
+    payments: [],
+    reminders: new Map(),
+    nextId: 1000,
+  }
+  return globalStore.__renewalsMockStore
+}
+
+/** Test helper: an untouched store. */
+export function resetMockStore() {
+  globalStore.__renewalsMockStore = undefined
+}
+
+/* Build ------------------------------------------------------------- */
+
 export function buildMockData(now: Date): MockData {
   const today = todayPK(now)
   const minutesAgo = (min: number) => new Date(now.getTime() - min * 60_000).toISOString()
   const t = MOCK_SETTINGS.thresholds
+  const store = mockStore()
 
   const services: ServiceRow[] = []
-  const clients: ClientDetail[] = CLIENTS.map((c) => {
+  /** The seed renewal date (before any renewal this session), for seeded payments. */
+  const seedRenewal = new Map<number, ISODate>()
+
+  const clients: ClientDetail[] = store.clients.map((c) => {
     const phone = normalisePhone(c.phone)
     const rows = c.services.map((s): ServiceRow => {
-      const renewalDate = addDays(today, s.days)
+      if (s.days !== undefined) seedRenewal.set(s.id, addDays(today, s.days))
+      const renewalDate = s.renewalDate ?? addDays(today, s.days ?? 365)
       const status = s.status ?? "active"
       const left = daysLeft(renewalDate, today)
       const row: ServiceRow = {
@@ -463,7 +521,7 @@ export function buildMockData(now: Date): MockData {
         phone,
         domain: s.domain,
         planLabel: s.plan,
-        startDate: minusOneYear(renewalDate),
+        startDate: s.startDate ?? minusOneYear(renewalDate),
         renewalDate,
         chargeAmount: s.amount,
         currency: s.currency ?? MOCK_SETTINGS.defaultCurrency,
@@ -471,6 +529,7 @@ export function buildMockData(now: Date): MockData {
         remindersEnabled: s.remindersEnabled ?? true,
         daysLeft: left,
         colour: serviceColour(left, status, t),
+        notes: s.notes ?? null,
       }
       // Built on the server, like the real view model (docs/07 §2).
       row.waLink = phone ? buildWaLink(phone, clientWhatsappText(row)) : null
@@ -488,59 +547,78 @@ export function buildMockData(now: Date): MockData {
     }
   })
 
+  // Rows for deleted services are dropped, like a cascade delete.
   const byId = new Map(services.map((s) => [s.id, s]))
-  const service = (id: number) => {
-    const s = byId.get(id)
-    if (!s) throw new Error(`Mock data: unknown service ${id}`)
-    return s
-  }
 
-  const reminders: ReminderRow[] = REMINDERS.map((r) => {
-    const s = service(r.serviceId)
-    const stage = dueStage(s.daysLeft, MOCK_SETTINGS.stages) ?? s.daysLeft
-    return {
-      id: r.id,
-      serviceId: s.id,
-      stage,
-      channel: r.channel,
-      recipient: "client",
-      status: r.status,
-      lastError: r.error ?? null,
-      sentAt: r.agoMin !== undefined ? minutesAgo(r.agoMin) : null,
-      waLink: r.channel === "whatsapp" ? (s.waLink ?? null) : null,
-      service: s,
-    }
+  const reminders: ReminderRow[] = REMINDERS.flatMap((r) => {
+    const s = byId.get(r.serviceId)
+    if (!s) return []
+    const o = store.reminders.get(r.id)
+    return [
+      {
+        id: r.id,
+        serviceId: s.id,
+        stage: dueStage(s.daysLeft, MOCK_SETTINGS.stages) ?? s.daysLeft,
+        channel: r.channel,
+        recipient: "client" as const,
+        status: o?.status ?? r.status,
+        lastError: o ? (o.lastError ?? null) : (r.error ?? null),
+        sentAt:
+          o?.sentAt !== undefined
+            ? o.sentAt
+            : r.agoMin !== undefined
+              ? minutesAgo(r.agoMin)
+              : null,
+        waLink: r.channel === "whatsapp" ? (s.waLink ?? null) : null,
+        service: s,
+      },
+    ]
   })
 
-  const notifications: NotificationItem[] = NOTIFICATIONS.map((n) => {
-    const s = service(n.serviceId)
-    return {
-      id: n.id,
-      type: n.type,
-      title: n.title(s),
-      createdAt: minutesAgo(n.agoMin),
-      isRead: n.isRead,
-      href: `/clients/${s.clientId}`,
-    }
+  const notifications: NotificationItem[] = NOTIFICATIONS.flatMap((n) => {
+    const s = byId.get(n.serviceId)
+    if (!s) return []
+    return [
+      {
+        id: n.id,
+        type: n.type,
+        title: n.title(s),
+        createdAt: minutesAgo(n.agoMin),
+        isRead: n.isRead,
+        href: `/clients/${s.clientId}`,
+      },
+    ]
   })
 
-  const payments: PaymentRow[] = PAYMENTS.map((p) => {
-    const s = service(p.serviceId)
-    const periodFrom = minusOneYear(s.renewalDate)
-    return {
-      id: p.id,
-      serviceId: s.id,
-      domain: s.domain,
-      clientName: s.clientName,
-      amount: s.chargeAmount,
-      currency: s.currency,
-      paidOn: addDays(periodFrom, -p.paidEarly),
-      method: p.method,
-      reference: p.reference,
-      periodFrom,
-      periodTo: s.renewalDate,
-    }
-  }).sort((a, b) => b.paidOn.localeCompare(a.paidOn))
+  const seeded: PaymentRow[] = PAYMENTS.flatMap((p) => {
+    const s = byId.get(p.serviceId)
+    const periodTo = seedRenewal.get(p.serviceId)
+    if (!s || !periodTo) return []
+    const periodFrom = minusOneYear(periodTo)
+    return [
+      {
+        id: p.id,
+        serviceId: s.id,
+        domain: s.domain,
+        clientName: s.clientName,
+        amount: s.chargeAmount,
+        currency: s.currency,
+        paidOn: addDays(periodFrom, -p.paidEarly),
+        method: p.method,
+        reference: p.reference,
+        periodFrom,
+        periodTo,
+      },
+    ]
+  })
+  const recorded: PaymentRow[] = store.payments.flatMap((p) => {
+    const s = byId.get(p.serviceId)
+    if (!s) return []
+    return [{ ...p, domain: s.domain, clientName: s.clientName, currency: s.currency }]
+  })
+  const payments = [...seeded, ...recorded].sort(
+    (a, b) => b.paidOn.localeCompare(a.paidOn) || b.id - a.id
+  )
 
   return {
     today,

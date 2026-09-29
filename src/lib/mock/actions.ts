@@ -1,16 +1,29 @@
 "use server"
 
 // Phase 1 fake Server Actions (docs/06 §7.2, signatures from docs/07 §2).
-// They wait 400–700 ms, validate input like the real ones will, and change
-// nothing. About 1 in 5 emails fails so the error states can be designed.
+// They wait 400–700 ms, validate input like the real ones will, and write
+// to the in-memory mock store. About 1 in 5 emails fails so the error
+// states can be designed.
+import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 
-import { addOneYear, todayPK } from "@/lib/domain/dates"
-import { renewSchema, type RenewInput } from "@/lib/domain/validation"
+import { todayPK } from "@/lib/domain/dates"
+import {
+  clientSchema,
+  fieldErrorsFrom,
+  newClientSchema,
+  renewSchema,
+  serviceSchema,
+  type ClientInput,
+  type NewClientInput,
+  type RenewInput,
+  type ServiceInput,
+} from "@/lib/domain/validation"
 import { buildWaLink } from "@/lib/domain/whatsapp"
 import { requireAdmin } from "@/lib/mock/auth"
 import { adminSummaryText, buildMockData, MOCK_SETTINGS } from "@/lib/mock/data"
+import * as store from "@/lib/mock/mutations"
 import type { ActionResult } from "@/types/actions"
 import type { NotificationItem } from "@/types/view"
 
@@ -30,6 +43,19 @@ function sleep() {
 
 function invalid(): ActionResult<never> {
   return { ok: false, error: "Invalid request." }
+}
+
+function checkFields(error: z.ZodError): ActionResult<never> {
+  return {
+    ok: false,
+    error: "Check the highlighted fields.",
+    fieldErrors: fieldErrorsFrom(error),
+  }
+}
+
+/** Refresh every page that shows services (the real actions list paths). */
+function refresh() {
+  revalidatePath("/", "layout")
 }
 
 /* Reminders --------------------------------------------------------- */
@@ -90,18 +116,22 @@ export async function sendReminderEmailAction(
   await requireAdmin()
   if (!stringId.safeParse(id).success) return invalid()
   await sleep()
+  const now = new Date().toISOString()
   if (Math.random() < 0.2) {
     const error =
       SMTP_ERRORS[Math.floor(Math.random() * SMTP_ERRORS.length)] ?? "Email failed"
+    store.setReminder(id, "failed", { sentAt: now, lastError: error })
     return { ok: false, error }
   }
-  return { ok: true, data: { status: "sent", sentAt: new Date().toISOString() } }
+  store.setReminder(id, "sent", { sentAt: now, lastError: null })
+  return { ok: true, data: { status: "sent", sentAt: now } }
 }
 
 export async function markOpenedAction(id: string): Promise<ActionResult> {
   await requireAdmin()
   if (!stringId.safeParse(id).success) return invalid()
   await sleep()
+  store.setReminder(id, "opened", { sentAt: new Date().toISOString() })
   return { ok: true }
 }
 
@@ -109,6 +139,7 @@ export async function markSentAction(id: string): Promise<ActionResult> {
   await requireAdmin()
   if (!stringId.safeParse(id).success) return invalid()
   await sleep()
+  store.setReminder(id, "sent", { sentAt: new Date().toISOString() })
   return { ok: true }
 }
 
@@ -116,6 +147,7 @@ export async function skipReminderAction(id: string): Promise<ActionResult> {
   await requireAdmin()
   if (!stringId.safeParse(id).success) return invalid()
   await sleep()
+  store.setReminder(id, "skipped", { sentAt: new Date().toISOString() })
   return { ok: true }
 }
 
@@ -165,19 +197,12 @@ export async function renewServiceAction(
 ): Promise<ActionResult<{ newRenewalDate: string }>> {
   await requireAdmin()
   const parsed = renewSchema(todayPK()).safeParse(input)
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {}
-    for (const issue of parsed.error.issues)
-      fieldErrors[String(issue.path[0])] = issue.message
-    return { ok: false, error: "Check the highlighted fields.", fieldErrors }
-  }
+  if (!parsed.success) return checkFields(parsed.error)
   await sleep()
-  const service = buildMockData(new Date()).services.find(
-    (s) => s.id === parsed.data.serviceId
-  )
-  if (!service) return { ok: false, error: "Service not found." }
-  const from = parsed.data.extendFrom === "today" ? todayPK() : service.renewalDate
-  return { ok: true, data: { newRenewalDate: addOneYear(from) } }
+  const newRenewalDate = store.renewService(parsed.data)
+  if (!newRenewalDate) return { ok: false, error: "Service not found." }
+  refresh()
+  return { ok: true, data: { newRenewalDate } }
 }
 
 export async function deletePaymentAction(id: number): Promise<ActionResult> {
@@ -189,24 +214,112 @@ export async function deletePaymentAction(id: number): Promise<ActionResult> {
 
 /* Clients and services ---------------------------------------------- */
 
+export async function createClientWithServiceAction(
+  input: NewClientInput
+): Promise<ActionResult> {
+  await requireAdmin()
+  const parsed = newClientSchema.safeParse(input)
+  if (!parsed.success) return checkFields(parsed.error)
+  await sleep()
+  if (store.domainTaken(parsed.data.service.domain)) {
+    return {
+      ok: false,
+      error: "Check the highlighted fields.",
+      fieldErrors: { "service.domain": "This domain already belongs to a client" },
+    }
+  }
+  const id = store.createClientWithService(parsed.data.client, parsed.data.service)
+  refresh()
+  redirect(`/clients/${id}?saved=client`)
+}
+
+export async function updateClientAction(
+  id: number,
+  input: ClientInput
+): Promise<ActionResult> {
+  await requireAdmin()
+  if (!numericId.safeParse(id).success) return invalid()
+  const parsed = clientSchema.safeParse(input)
+  if (!parsed.success) return checkFields(parsed.error)
+  await sleep()
+  if (!store.updateClient(id, parsed.data))
+    return { ok: false, error: "Client not found." }
+  refresh()
+  redirect(`/clients/${id}?saved=client`)
+}
+
 export async function deleteClientAction(id: number): Promise<ActionResult> {
   await requireAdmin()
   if (!numericId.safeParse(id).success) return invalid()
   await sleep()
-  redirect("/clients")
+  if (!store.deleteClient(id)) return { ok: false, error: "Client not found." }
+  refresh()
+  redirect("/clients?deleted=client")
 }
 
-export async function toggleCancelServiceAction(id: number): Promise<ActionResult> {
+export async function createServiceAction(
+  clientId: number,
+  input: ServiceInput
+): Promise<ActionResult> {
+  await requireAdmin()
+  if (!numericId.safeParse(clientId).success) return invalid()
+  const parsed = serviceSchema.safeParse(input)
+  if (!parsed.success) return checkFields(parsed.error)
+  await sleep()
+  if (store.domainTaken(parsed.data.domain)) {
+    return {
+      ok: false,
+      error: "Check the highlighted fields.",
+      fieldErrors: { domain: "This domain already belongs to a client" },
+    }
+  }
+  if (store.createService(clientId, parsed.data) === null) {
+    return { ok: false, error: "Client not found." }
+  }
+  refresh()
+  redirect(`/clients/${clientId}?saved=service`)
+}
+
+export async function updateServiceAction(
+  id: number,
+  input: ServiceInput
+): Promise<ActionResult> {
+  await requireAdmin()
+  if (!numericId.safeParse(id).success) return invalid()
+  const parsed = serviceSchema.safeParse(input)
+  if (!parsed.success) return checkFields(parsed.error)
+  await sleep()
+  if (store.domainTaken(parsed.data.domain, id)) {
+    return {
+      ok: false,
+      error: "Check the highlighted fields.",
+      fieldErrors: { domain: "This domain already belongs to a client" },
+    }
+  }
+  const clientId = store.updateService(id, parsed.data)
+  if (clientId === null) return { ok: false, error: "Service not found." }
+  refresh()
+  redirect(`/clients/${clientId}?saved=service`)
+}
+
+export async function toggleCancelServiceAction(
+  id: number
+): Promise<ActionResult<{ status: "active" | "cancelled" }>> {
   await requireAdmin()
   if (!numericId.safeParse(id).success) return invalid()
   await sleep()
-  return { ok: true }
+  const status = store.toggleCancelService(id)
+  if (!status) return { ok: false, error: "Service not found." }
+  refresh()
+  return { ok: true, data: { status } }
 }
 
 export async function deleteServiceAction(id: number): Promise<ActionResult> {
   await requireAdmin()
   if (!numericId.safeParse(id).success) return invalid()
   await sleep()
+  if (store.deleteService(id) === null) return { ok: false, error: "Service not found." }
+  refresh()
   return { ok: true }
 }
 

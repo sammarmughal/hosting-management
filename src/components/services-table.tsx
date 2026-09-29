@@ -41,7 +41,14 @@ const clientHref = (s: ServiceRow) => `/clients/${s.clientId}`
  * One row per service (docs/06 §4.4–4.5, docs/12 §5): a table from md up,
  * cards on mobile. Rows link to the client; actions live in a ⋯ menu.
  */
-export function ServicesTable({ rows }: { rows: ServiceRow[] }) {
+export function ServicesTable({
+  rows,
+  showStartDate = false,
+}: {
+  rows: ServiceRow[]
+  /** The Clients list shows the start date too (docs/06 §4.5), from xl up. */
+  showStartDate?: boolean
+}) {
   const router = useRouter()
   const [renewing, setRenewing] = React.useState<ServiceRow | null>(null)
   const [renewOpen, setRenewOpen] = React.useState(false)
@@ -60,6 +67,9 @@ export function ServicesTable({ rows }: { rows: ServiceRow[] }) {
             <TableRow>
               <TableHead className="w-[28%]">Client</TableHead>
               <TableHead className="w-[22%]">Domain</TableHead>
+              {showStartDate && (
+                <TableHead className="hidden w-30 xl:table-cell">Start date</TableHead>
+              )}
               <TableHead className="w-30">Renewal date</TableHead>
               <TableHead className="w-28 text-right">Amount</TableHead>
               <TableHead className="w-48 pl-6">Time left</TableHead>
@@ -100,6 +110,11 @@ export function ServicesTable({ rows }: { rows: ServiceRow[] }) {
                     {s.domain}
                   </div>
                 </TableCell>
+                {showStartDate && (
+                  <TableCell className="hidden text-ink-muted xl:table-cell">
+                    {formatDatePK(s.startDate)}
+                  </TableCell>
+                )}
                 <TableCell className="text-ink-muted">
                   {formatDatePK(s.renewalDate)}
                 </TableCell>

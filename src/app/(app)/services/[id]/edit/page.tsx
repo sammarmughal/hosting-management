@@ -1,8 +1,10 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
+import { ServiceForm } from "@/components/client-form"
 import { PageHeader } from "@/components/page-header"
-import { PagePlaceholder } from "@/components/page-placeholder"
+import { formatAmount } from "@/lib/domain/money"
+import type { Currency } from "@/lib/domain/validation"
 import { getService } from "@/lib/data"
 
 type Props = { params: Promise<{ id: string }> }
@@ -19,13 +21,25 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function EditServicePage({ params }: Props) {
-  const service = await load(params)
+  const s = await load(params)
   return (
     <>
-      <PageHeader title="Edit service" description={service.domain} />
-      <PagePlaceholder>
-        The service form: domain, plan, dates, charge and reminders.
-      </PagePlaceholder>
+      <PageHeader title="Edit service" description={`${s.domain} · ${s.clientName}`} />
+      <ServiceForm
+        mode="edit"
+        serviceId={s.id}
+        clientId={s.clientId}
+        defaultValues={{
+          domain: s.domain,
+          planLabel: s.planLabel ?? "",
+          startDate: s.startDate,
+          renewalDate: s.renewalDate,
+          chargeAmount: formatAmount(s.chargeAmount),
+          currency: s.currency as Currency,
+          remindersEnabled: s.remindersEnabled,
+          notes: s.notes ?? "",
+        }}
+      />
     </>
   )
 }

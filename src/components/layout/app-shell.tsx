@@ -46,6 +46,7 @@ export function AppShell({
       <Topbar
         title={titleFor(pathname)}
         crumbs={crumbs}
+        hideSearch={pathname === "/clients"}
         unread={summary.unreadNotifications}
         onOpenMenu={() => setNavOpen(true)}
       />

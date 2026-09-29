@@ -1,11 +1,18 @@
 // Mock queries (docs/06 §7.2). Same signatures as lib/server/queries.ts will
 // have in Phase 4, returning the view-model types.
-import { sumAmounts, toCents } from "@/lib/domain/money"
+import { formatDatePK } from "@/lib/domain/dates"
+import { formatMoney, sumAmounts, toCents } from "@/lib/domain/money"
 import { buildWaLink } from "@/lib/domain/whatsapp"
-import { adminSummaryText, buildMockData, MOCK_SETTINGS } from "@/lib/mock/data"
+import type { ServiceFilter, ServiceSort } from "@/lib/service-filters"
+import {
+  adminSummaryText,
+  buildMockData,
+  MOCK_SETTINGS,
+  type MockData,
+} from "@/lib/mock/data"
 import type {
+  ActivityItem,
   ClientDetail,
-  Colour,
   DashboardStats,
   NotificationItem,
   PaymentRow,
@@ -15,7 +22,24 @@ import type {
   ShellSummary,
 } from "@/types/view"
 
-const data = () => buildMockData(new Date())
+/**
+ * MOCK_EMPTY=1 (development only) returns no data at all, to design the
+ * "no clients yet" empty states.
+ */
+function data(): MockData {
+  const d = buildMockData(new Date())
+  if (process.env.NODE_ENV !== "production" && process.env.MOCK_EMPTY === "1") {
+    return {
+      ...d,
+      clients: [],
+      services: [],
+      reminders: [],
+      notifications: [],
+      payments: [],
+    }
+  }
+  return d
+}
 
 const OPEN_STATUSES: ReminderRow["status"][] = ["pending", "failed", "opened"]
 
@@ -128,12 +152,6 @@ function sortQueue(rows: ReminderRow[]) {
 
 /* Clients / services ------------------------------------------------ */
 
-/**
- * Colour filters plus: "active" (not cancelled), "due" (≤ 30 days or
- * expired, the dashboard's "View all") and "soon" (0–30 days).
- */
-export type ServiceFilter = "all" | "active" | "due" | "soon" | Colour
-
 const FILTERS: Record<Exclude<ServiceFilter, "all">, (s: ServiceRow) => boolean> = {
   active: (s) => s.status === "active",
   due: (s) => s.status === "active" && s.daysLeft <= 30,
@@ -144,11 +162,6 @@ const FILTERS: Record<Exclude<ServiceFilter, "all">, (s: ServiceRow) => boolean>
   expired: (s) => s.colour === "expired",
   cancelled: (s) => s.colour === "cancelled",
 }
-
-export function isServiceFilter(value: unknown): value is ServiceFilter {
-  return value === "all" || (typeof value === "string" && value in FILTERS)
-}
-export type ServiceSort = "days_asc" | "days_desc" | "name" | "renewal" | "charge"
 
 export interface ServiceFilters {
   q?: string
@@ -163,7 +176,10 @@ export const PAGE_SIZE = 25
 
 export interface ServiceList {
   rows: ServiceRow[]
+  /** Rows matching the search and filter (before paging). */
   total: number
+  /** Every service, ignoring search and filters (0 = no clients yet). */
+  totalAll: number
   page: number
   pageSize: number
   counts: Record<ServiceFilter, number>
@@ -198,6 +214,7 @@ export async function listServices(filters: ServiceFilters = {}): Promise<Servic
   return {
     rows: sorted.slice(start, start + PAGE_SIZE),
     total: filtered.length,
+    totalAll: all.length,
     page: Math.max(1, page),
     pageSize: PAGE_SIZE,
     counts,
@@ -221,6 +238,7 @@ export interface ClientPageData {
   client: ClientDetail
   payments: PaymentRow[]
   reminders: ReminderRow[]
+  activity: ActivityItem[]
 }
 
 export async function getClient(id: number): Promise<ClientPageData | null> {
@@ -228,11 +246,63 @@ export async function getClient(id: number): Promise<ClientPageData | null> {
   const client = d.clients.find((c) => c.id === id)
   if (!client) return null
   const ids = new Set(client.services.map((s) => s.id))
+  const payments = d.payments.filter((p) => ids.has(p.serviceId))
+  const reminders = d.reminders
+    .filter((r) => ids.has(r.serviceId))
+    .sort((a, b) => (b.sentAt ?? "").localeCompare(a.sentAt ?? ""))
   return {
     client,
-    payments: d.payments.filter((p) => ids.has(p.serviceId)),
-    reminders: d.reminders.filter((r) => ids.has(r.serviceId)),
+    payments,
+    reminders,
+    activity: buildActivity(client, payments, reminders),
   }
+}
+
+// Until the audit log exists (Phase 3), the timeline is derived from the
+// services, payments and reminders. Dates without a time sit at 09:00 PK.
+function buildActivity(
+  client: ClientDetail,
+  payments: PaymentRow[],
+  reminders: ReminderRow[]
+): ActivityItem[] {
+  const atDate = (d: string) => `${d}T09:00:00+05:00`
+  const items: ActivityItem[] = [
+    ...client.services.map((s) => ({
+      id: `svc-${s.id}`,
+      at: atDate(s.startDate),
+      kind: "service" as const,
+      text: `Hosting for ${s.domain} started${s.planLabel ? ` on the ${s.planLabel} plan` : ""}`,
+    })),
+    ...payments.map((p) => ({
+      id: `pay-${p.id}`,
+      at: atDate(p.paidOn),
+      kind: "payment" as const,
+      text: `Payment of ${formatMoney(p.amount, p.currency)} by ${p.method} · ${p.domain} renewed until ${formatDatePK(p.periodTo)}`,
+    })),
+    ...reminders.flatMap((r): ActivityItem[] => {
+      if (!r.sentAt) return []
+      const channel = r.channel === "email" ? "Email" : "WhatsApp"
+      const map: Partial<Record<ReminderRow["status"], [ActivityItem["kind"], string]>> =
+        {
+          sent: [r.channel, `${channel} reminder sent for ${r.service.domain}`],
+          opened: ["whatsapp", `WhatsApp reminder opened for ${r.service.domain}`],
+          failed: ["failed", `${channel} reminder for ${r.service.domain} failed`],
+          skipped: ["skipped", `${channel} reminder for ${r.service.domain} skipped`],
+        }
+      const entry = map[r.status]
+      return entry
+        ? [{ id: `rem-${r.id}`, at: r.sentAt, kind: entry[0], text: entry[1] }]
+        : []
+    }),
+  ]
+  return items.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+}
+
+/** Every service, by renewal date (CSV export). */
+export async function exportServices(): Promise<ServiceRow[]> {
+  return [...data().services].sort(
+    (a, b) => a.renewalDate.localeCompare(b.renewalDate) || a.id - b.id
+  )
 }
 
 export async function getService(id: number): Promise<ServiceRow | null> {

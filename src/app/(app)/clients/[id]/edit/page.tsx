@@ -1,8 +1,9 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
+import { ClientForm } from "@/components/client-form"
 import { PageHeader } from "@/components/page-header"
-import { PagePlaceholder } from "@/components/page-placeholder"
+import { formatPhone } from "@/lib/domain/whatsapp"
 import { getClient } from "@/lib/data"
 
 type Props = { params: Promise<{ id: string }> }
@@ -23,9 +24,17 @@ export default async function EditClientPage({ params }: Props) {
   return (
     <>
       <PageHeader title="Edit client" description={client.name} />
-      <PagePlaceholder>
-        The client form: name, company, email, WhatsApp phone and notes.
-      </PagePlaceholder>
+      <ClientForm
+        mode="edit"
+        clientId={client.id}
+        defaultValues={{
+          name: client.name,
+          company: client.company ?? "",
+          email: client.email ?? "",
+          phone: client.phone ? formatPhone(client.phone) : "",
+          notes: client.notes ?? "",
+        }}
+      />
     </>
   )
 }
