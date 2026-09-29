@@ -12,7 +12,7 @@ import { spawn, type ChildProcess } from "node:child_process"
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
 
-import { chromium, type Browser } from "@playwright/test"
+import { chromium, type Browser, type Page } from "@playwright/test"
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000"
 const WIDTHS = [390, 1440] as const
@@ -61,6 +61,27 @@ async function launch(): Promise<Browser> {
   throw new Error("unreachable")
 }
 
+/**
+ * Streaming pages (loading.tsx) can still be growing when "networkidle"
+ * fires, especially on a first dev compile. Wait until the height has been
+ * stable for 600 ms (max 10 s) so full-page shots aren't cut off.
+ */
+async function waitForStableHeight(page: Page) {
+  let last = -1
+  let stableSince = Date.now()
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline) {
+    const h = await page.evaluate(() => document.documentElement.scrollHeight)
+    if (h !== last) {
+      last = h
+      stableSince = Date.now()
+    } else if (Date.now() - stableSince >= 600) {
+      return
+    }
+    await page.waitForTimeout(150)
+  }
+}
+
 function stopServer(child: ChildProcess) {
   if (process.platform === "win32" && child.pid) {
     spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" })
@@ -102,6 +123,7 @@ async function main() {
 
         const res = await page.goto(BASE_URL + route, { waitUntil: "networkidle" })
         await page.evaluate(() => document.fonts.ready)
+        await waitForStableHeight(page)
 
         const overflow = await page.evaluate(
           () =>

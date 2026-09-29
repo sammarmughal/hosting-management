@@ -1,13 +1,15 @@
 // Mock queries (docs/06 §7.2). Same signatures as lib/server/queries.ts will
 // have in Phase 4, returning the view-model types.
 import { sumAmounts, toCents } from "@/lib/domain/money"
-import { buildMockData, MOCK_SETTINGS } from "@/lib/mock/data"
+import { buildWaLink } from "@/lib/domain/whatsapp"
+import { adminSummaryText, buildMockData, MOCK_SETTINGS } from "@/lib/mock/data"
 import type {
   ClientDetail,
   Colour,
   DashboardStats,
   NotificationItem,
   PaymentRow,
+  QueueItem,
   ReminderRow,
   ServiceRow,
   ShellSummary,
@@ -35,11 +37,11 @@ export async function getSettings() {
 
 export async function getShellSummary(): Promise<ShellSummary> {
   const d = data()
-  const open = d.reminders.filter((r) => OPEN_STATUSES.includes(r.status))
+  const queue = buildQueue(d.reminders)
   return {
     adminName: MOCK_SETTINGS.adminName,
-    remindersDue: open.length,
-    remindersOverdue: open.some((r) => r.service.daysLeft < 0),
+    remindersDue: queue.length,
+    remindersOverdue: queue.some((q) => q.service.daysLeft < 0),
     unreadNotifications: d.notifications.filter((n) => !n.isRead).length,
   }
 }
@@ -48,9 +50,14 @@ export async function getShellSummary(): Promise<ShellSummary> {
 
 export interface DashboardData {
   stats: DashboardStats
-  queue: ReminderRow[]
+  /** Services with at least one client reminder still needing action. */
+  queue: QueueItem[]
+  /** Active services with ≤ 30 days left or expired, most urgent first (max 10). */
   dueSoon: ServiceRow[]
   lastCheckAt: string
+  adminEmail: string
+  /** wa.me link to the admin's own number with the summary text (docs/08 §5.2). */
+  adminSummaryWaLink: string | null
 }
 
 export async function getDashboard(): Promise<DashboardData> {
@@ -58,6 +65,7 @@ export async function getDashboard(): Promise<DashboardData> {
   const t = MOCK_SETTINGS.thresholds
   const active = d.services.filter((s) => s.status === "active")
   const in30 = active.filter((s) => s.daysLeft >= 0 && s.daysLeft <= 30)
+  const queue = buildQueue(d.reminders)
 
   return {
     stats: {
@@ -69,13 +77,46 @@ export async function getDashboard(): Promise<DashboardData> {
         in30.map((s) => ({ currency: s.currency, amount: s.chargeAmount }))
       ),
     },
-    queue: sortQueue(d.reminders.filter((r) => OPEN_STATUSES.includes(r.status))),
+    queue,
     dueSoon: active
       .filter((s) => s.daysLeft <= 30)
       .sort((a, b) => a.daysLeft - b.daysLeft)
-      .slice(0, 15),
+      .slice(0, 10),
     lastCheckAt: d.lastCheckAt,
+    adminEmail: MOCK_SETTINGS.adminEmail,
+    adminSummaryWaLink: queue.length
+      ? buildWaLink(
+          MOCK_SETTINGS.adminWhatsapp,
+          adminSummaryText(
+            queue.map((q) => q.service),
+            d.today
+          )
+        )
+      : null,
   }
+}
+
+/** Groups client reminder rows by service; keeps services with an open row. Most urgent first. */
+function buildQueue(reminders: ReminderRow[]): QueueItem[] {
+  const byService = new Map<number, QueueItem>()
+  for (const r of reminders) {
+    if (r.recipient !== "client") continue
+    const item = byService.get(r.serviceId) ?? {
+      service: r.service,
+      stage: r.stage,
+      email: null,
+      whatsapp: null,
+    }
+    item[r.channel] = r
+    byService.set(r.serviceId, item)
+  }
+  return [...byService.values()]
+    .filter((q) =>
+      [q.email, q.whatsapp].some((r) => r && OPEN_STATUSES.includes(r.status))
+    )
+    .sort(
+      (a, b) => a.service.daysLeft - b.service.daysLeft || a.service.id - b.service.id
+    )
 }
 
 /** Most urgent first: expired, then by days left. */
@@ -87,7 +128,26 @@ function sortQueue(rows: ReminderRow[]) {
 
 /* Clients / services ------------------------------------------------ */
 
-export type ServiceFilter = "all" | Colour
+/**
+ * Colour filters plus: "active" (not cancelled), "due" (≤ 30 days or
+ * expired, the dashboard's "View all") and "soon" (0–30 days).
+ */
+export type ServiceFilter = "all" | "active" | "due" | "soon" | Colour
+
+const FILTERS: Record<Exclude<ServiceFilter, "all">, (s: ServiceRow) => boolean> = {
+  active: (s) => s.status === "active",
+  due: (s) => s.status === "active" && s.daysLeft <= 30,
+  soon: (s) => s.status === "active" && s.daysLeft >= 0 && s.daysLeft <= 30,
+  green: (s) => s.colour === "green",
+  orange: (s) => s.colour === "orange",
+  red: (s) => s.colour === "red",
+  expired: (s) => s.colour === "expired",
+  cancelled: (s) => s.colour === "cancelled",
+}
+
+export function isServiceFilter(value: unknown): value is ServiceFilter {
+  return value === "all" || (typeof value === "string" && value in FILTERS)
+}
 export type ServiceSort = "days_asc" | "days_desc" | "name" | "renewal" | "charge"
 
 export interface ServiceFilters {
@@ -127,12 +187,11 @@ export async function listServices(filters: ServiceFilters = {}): Promise<Servic
   })
 
   const counts = { all: searched.length } as Record<ServiceFilter, number>
-  for (const c of ["green", "orange", "red", "expired", "cancelled"] as const) {
-    counts[c] = searched.filter((s) => s.colour === c).length
+  for (const [key, test] of Object.entries(FILTERS)) {
+    counts[key as ServiceFilter] = searched.filter(test).length
   }
 
-  const filtered =
-    filter === "all" ? searched : searched.filter((s) => s.colour === filter)
+  const filtered = filter === "all" ? searched : searched.filter(FILTERS[filter])
   const sorted = [...filtered].sort(SORTS[sort])
   const start = (Math.max(1, page) - 1) * PAGE_SIZE
 

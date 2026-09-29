@@ -23,6 +23,8 @@ export interface ServiceRow {
   remindersEnabled: boolean
   daysLeft: number
   colour: Colour
+  /** Added in Phase 1: prebuilt client WhatsApp link (docs/07 §2), null without a valid phone. */
+  waLink?: string | null
 }
 
 export interface ReminderRow {
@@ -57,6 +59,14 @@ export interface ClientDetail {
   phone?: string | null // normalised digits
   notes?: string | null
   services: ServiceRow[]
+}
+
+/** One reminder-queue row per service: its client email and WhatsApp rows for the current stage. */
+export interface QueueItem {
+  service: ServiceRow
+  stage: number
+  email: ReminderRow | null
+  whatsapp: ReminderRow | null
 }
 
 export interface ShellSummary {

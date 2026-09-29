@@ -6,13 +6,11 @@
 import { redirect } from "next/navigation"
 import { z } from "zod"
 
-import { addOneYear, formatDatePK, todayPK } from "@/lib/domain/dates"
-import { DEFAULT_TEMPLATES } from "@/lib/domain/default-templates"
-import { formatMoney } from "@/lib/domain/money"
-import { renderTemplate } from "@/lib/domain/templates"
+import { addOneYear, todayPK } from "@/lib/domain/dates"
+import { renewSchema, type RenewInput } from "@/lib/domain/validation"
 import { buildWaLink } from "@/lib/domain/whatsapp"
 import { requireAdmin } from "@/lib/mock/auth"
-import { buildMockData, MOCK_SETTINGS } from "@/lib/mock/data"
+import { adminSummaryText, buildMockData, MOCK_SETTINGS } from "@/lib/mock/data"
 import type { ActionResult } from "@/types/actions"
 import type { NotificationItem } from "@/types/view"
 
@@ -36,21 +34,25 @@ function invalid(): ActionResult<never> {
 
 /* Reminders --------------------------------------------------------- */
 
-export async function checkNowAction(): Promise<
-  ActionResult<{
-    queuedNew: number
-    skipped: number
-    notificationsNew: number
-    emailsSent: number
-    emailsFailed: number
-    lastCheckAt: string
-  }>
-> {
+export interface CheckResult {
+  servicesChecked: number
+  queuedNew: number
+  skipped: number
+  notificationsNew: number
+  emailsSent: number
+  emailsFailed: number
+  lastCheckAt: string
+}
+
+export async function checkNowAction(): Promise<ActionResult<CheckResult>> {
   await requireAdmin()
   await sleep()
+  const services = buildMockData(new Date()).services
   return {
     ok: true,
     data: {
+      servicesChecked: services.filter((s) => s.status === "active" && s.remindersEnabled)
+        .length,
       queuedNew: 0,
       skipped: 0,
       notificationsNew: 0,
@@ -128,14 +130,11 @@ export async function sendAdminSummaryEmailAction(): Promise<
   return { ok: true, data: { count } }
 }
 
-const SUMMARY_DOT = {
-  red: "🔴",
-  orange: "🟠",
-  expired: "⚫",
-  green: "🟢",
-  cancelled: "⚪",
-}
-
+/**
+ * Returns the admin summary link and marks the admin WhatsApp rows opened.
+ * The dashboard already renders the link as an <a href> (opening a URL
+ * after an await would be blocked as a popup), and calls this on click.
+ */
 export async function adminSummaryWhatsappAction(): Promise<
   ActionResult<{ url: string }>
 > {
@@ -146,25 +145,8 @@ export async function adminSummaryWhatsappAction(): Promise<
     ...new Map(
       d.reminders.filter((r) => r.status !== "sent").map((r) => [r.serviceId, r.service])
     ).values(),
-  ].sort((a, b) => a.daysLeft - b.daysLeft)
-
-  const summaryList = services
-    .map((s) => {
-      const when =
-        s.daysLeft < 0
-          ? `expired ${-s.daysLeft} days ago`
-          : s.daysLeft === 0
-            ? "today"
-            : `${s.daysLeft} days`
-      return `${SUMMARY_DOT[s.colour]} ${s.domain} – ${s.clientName} – ${when} – ${formatMoney(s.chargeAmount, s.currency)}`
-    })
-    .join("\n")
-
-  const text = renderTemplate(
-    DEFAULT_TEMPLATES.admin_whatsapp.body,
-    { today: formatDatePK(d.today), count: services.length, summary_list: summaryList },
-    { mode: "text" }
-  )
+  ]
+  const text = adminSummaryText(services, d.today)
   return { ok: true, data: { url: buildWaLink(MOCK_SETTINGS.adminWhatsapp, text) } }
 }
 
@@ -178,25 +160,11 @@ export async function sendManualEmailAction(serviceId: number): Promise<ActionRe
 
 /* Payments ---------------------------------------------------------- */
 
-const renewSchema = z
-  .object({
-    serviceId: numericId,
-    amount: z
-      .string()
-      .regex(/^\d{1,8}(\.\d{1,2})?$/, "Enter an amount like 6500 or 6500.50"),
-    paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    method: z.enum(["Cash", "Bank transfer", "JazzCash", "Easypaisa", "Other"]),
-    reference: z.string().max(100).optional(),
-    notes: z.string().max(1000).optional(),
-    extendFrom: z.enum(["renewal", "today"]),
-  })
-  .strict()
-
 export async function renewServiceAction(
-  input: z.input<typeof renewSchema>
+  input: RenewInput
 ): Promise<ActionResult<{ newRenewalDate: string }>> {
   await requireAdmin()
-  const parsed = renewSchema.safeParse(input)
+  const parsed = renewSchema(todayPK()).safeParse(input)
   if (!parsed.success) {
     const fieldErrors: Record<string, string> = {}
     for (const issue of parsed.error.issues)

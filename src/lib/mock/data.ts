@@ -10,10 +10,10 @@ import {
   type ISODate,
 } from "@/lib/domain/dates"
 import { DEFAULT_TEMPLATES } from "@/lib/domain/default-templates"
-import { formatAmount } from "@/lib/domain/money"
+import { formatAmount, formatMoney } from "@/lib/domain/money"
 import { DEFAULT_STAGES, dueStage, parseStages } from "@/lib/domain/stages"
 import { DEFAULT_THRESHOLDS, serviceColour } from "@/lib/domain/status"
-import { daysText, renderForDays } from "@/lib/domain/templates"
+import { daysText, renderForDays, renderTemplate } from "@/lib/domain/templates"
 import { buildWaLink, normalisePhone } from "@/lib/domain/whatsapp"
 import type {
   ClientDetail,
@@ -282,19 +282,13 @@ const REMINDERS: ReminderSeed[] = [
     serviceId: 112,
     channel: "email",
     status: "failed",
-    agoMin: 22 * 60,
-    error: "Invalid login: 535 5.7.8 Error: authentication failed",
-  },
-  { id: "r8", serviceId: 102, channel: "email", status: "sent", agoMin: 26 * 60 },
-  {
-    id: "r9",
-    serviceId: 111,
-    channel: "email",
-    status: "failed",
-    agoMin: 5 * 60,
+    agoMin: 40,
     error:
-      "550 5.1.1 <usman.ghani@ghanipharmacy.pk>: Recipient address rejected: User unknown",
+      "550 5.1.1 <zainabskitchen@gmail.com>: Recipient address rejected: Mailbox full",
   },
+  { id: "r8", serviceId: 112, channel: "whatsapp", status: "pending" },
+  // Already handled: sent yesterday, so it is not in the queue.
+  { id: "r9", serviceId: 102, channel: "email", status: "sent", agoMin: 26 * 60 },
   { id: "r10", serviceId: 108, channel: "email", status: "pending" },
 ]
 
@@ -335,8 +329,8 @@ const NOTIFICATIONS: NotificationSeed[] = [
   {
     id: "n3",
     type: "email_failed",
-    serviceId: 111,
-    agoMin: 5 * 60,
+    serviceId: 112,
+    agoMin: 40,
     isRead: false,
     title: (s) => `Email to ${s.clientName} failed`,
   },
@@ -460,7 +454,7 @@ export function buildMockData(now: Date): MockData {
       const renewalDate = addDays(today, s.days)
       const status = s.status ?? "active"
       const left = daysLeft(renewalDate, today)
-      return {
+      const row: ServiceRow = {
         id: s.id,
         clientId: c.id,
         clientName: c.name,
@@ -478,6 +472,9 @@ export function buildMockData(now: Date): MockData {
         daysLeft: left,
         colour: serviceColour(left, status, t),
       }
+      // Built on the server, like the real view model (docs/07 §2).
+      row.waLink = phone ? buildWaLink(phone, clientWhatsappText(row)) : null
+      return row
     })
     services.push(...rows)
     return {
@@ -510,10 +507,7 @@ export function buildMockData(now: Date): MockData {
       status: r.status,
       lastError: r.error ?? null,
       sentAt: r.agoMin !== undefined ? minutesAgo(r.agoMin) : null,
-      waLink:
-        r.channel === "whatsapp" && s.phone
-          ? buildWaLink(s.phone, clientWhatsappText(s))
-          : null,
+      waLink: r.channel === "whatsapp" ? (s.waLink ?? null) : null,
       service: s,
     }
   })
@@ -557,6 +551,35 @@ export function buildMockData(now: Date): MockData {
     payments,
     lastCheckAt: minutesAgo(10),
   }
+}
+
+const SUMMARY_DOT: Record<ServiceRow["colour"], string> = {
+  red: "🔴",
+  orange: "🟠",
+  expired: "⚫",
+  green: "🟢",
+  cancelled: "⚪",
+}
+
+/** The admin WhatsApp summary (docs/08 §5.2), most urgent first. */
+export function adminSummaryText(services: ServiceRow[], today: ISODate): string {
+  const sorted = [...services].sort((a, b) => a.daysLeft - b.daysLeft)
+  const list = sorted
+    .map((s) => {
+      const when =
+        s.daysLeft < 0
+          ? `expired ${-s.daysLeft} days ago`
+          : s.daysLeft === 0
+            ? "today"
+            : `${s.daysLeft} days`
+      return `${SUMMARY_DOT[s.colour]} ${s.domain} – ${s.clientName} – ${when} – ${formatMoney(s.chargeAmount, s.currency)}`
+    })
+    .join("\n")
+  return renderTemplate(
+    DEFAULT_TEMPLATES.admin_whatsapp.body,
+    { today: formatDatePK(today), count: sorted.length, summary_list: list },
+    { mode: "text" }
+  )
 }
 
 /** The client WhatsApp message for a service, from the default template. */

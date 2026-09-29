@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { formatDateTimePK, formatRelative } from "@/lib/domain/relative-time"
+import {
+  formatDateTimePK,
+  formatRelative,
+  formatSentAt,
+} from "@/lib/domain/relative-time"
 
 // 29 Sep 2026, 15:00 in Pakistan (UTC+5)
 const NOW = new Date("2026-09-29T10:00:00Z")
@@ -30,6 +34,14 @@ describe("formatRelative", () => {
     expect(formatRelative(ago(3 * 24 * HOUR), NOW)).toBe("3 days ago")
     expect(formatRelative(ago(6 * 24 * HOUR), NOW)).toBe("6 days ago")
     expect(formatRelative(ago(9 * 24 * HOUR), NOW)).toBe("20 Sep 2026")
+  })
+})
+
+describe("formatSentAt", () => {
+  it("shows the time for today, the date otherwise", () => {
+    expect(formatSentAt("2026-09-29T05:42:00Z", NOW)).toBe("10:42")
+    expect(formatSentAt("2026-09-28T05:42:00Z", NOW)).toBe("28 Sep")
+    expect(formatSentAt("2025-12-30T05:42:00Z", NOW)).toBe("30 Dec 2025")
   })
 })
 

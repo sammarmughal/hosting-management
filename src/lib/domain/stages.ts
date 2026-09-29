@@ -17,6 +17,14 @@ export function parseStages(input: string | readonly number[]): number[] {
   return [...new Set(valid)].sort((a, b) => b - a)
 }
 
+/** 7 → "7 days before expiry", 0 → "Expiry day", −3 → "3 days after expiry". */
+export function stageLabel(stage: number): string {
+  if (stage === 0) return "Expiry day"
+  const n = Math.abs(stage)
+  const days = `${n} ${n === 1 ? "day" : "days"}`
+  return stage > 0 ? `${days} before expiry` : `${days} after expiry`
+}
+
 /**
  * dueStage(d) = MIN { s ∈ stages : d ≤ s }, or null.
  * This also gives catch-up: if the app wasn't opened for a while, only the

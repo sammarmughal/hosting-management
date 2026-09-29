@@ -59,10 +59,12 @@ export function TimerPill({
   if (now === null) {
     text = staticLabel(d)
   } else if (exp - now < 0) {
+    // Calendar days (Asia/Karachi), so it agrees with the static label, the
+    // reminder stage and the table. Hours only on the first day after expiry.
     const ago = now - exp
     text =
-      ago >= DAY
-        ? `Expired ${days(Math.floor(ago / DAY))} ago`
+      d < -1
+        ? `Expired ${days(-d)} ago`
         : `Expired ${Math.max(1, Math.floor(ago / 3_600_000))}h ago`
   } else {
     let ms = exp - now
