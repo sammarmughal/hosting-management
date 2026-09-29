@@ -46,6 +46,28 @@ export interface DashboardStats {
   expected30: { currency: string; total: string }[]
 }
 
+/* Added in Phase 1 (not in docs/06 §7.1): shapes the shell and the client
+   detail page need. Built by the mock layer now, by Prisma later. */
+
+export interface ClientDetail {
+  id: number
+  name: string
+  company?: string | null
+  email?: string | null
+  phone?: string | null // normalised digits
+  notes?: string | null
+  services: ServiceRow[]
+}
+
+export interface ShellSummary {
+  adminName: string
+  /** Reminder rows still needing action (pending, failed, opened). */
+  remindersDue: number
+  /** True when any of those rows belongs to an expired service. */
+  remindersOverdue: boolean
+  unreadNotifications: number
+}
+
 export interface NotificationItem {
   id: string
   type: string

@@ -42,9 +42,9 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 - [x] Add the extra Button variants (`success`, `whatsapp`) via `cva`.
 - [x] `lib/domain/dates.ts`, `status.ts`, `whatsapp.ts` and `templates.ts` (pure functions from `04`/`08`). Write them **now**, since the UI needs them, with Vitest unit tests (`10-TESTING.md` §1).
 - [x] `types/view.ts` (UI spec §7.1).
-- [ ] `lib/mock/data.ts`, `queries.ts` and `actions.ts`, plus `lib/data.ts` re-exporting the mock queries.
-- [ ] `hooks/use-now.ts` and `components/timer-pill.tsx` (UI spec §5), and `SettingsProvider` with the thresholds.
-- [ ] Layout components: `Sidebar`, `Topbar` (with the bell dropdown), `BottomNav` (mobile), the mobile drawer (`Sheet`) and the floating "+" button.
+- [x] `lib/mock/data.ts`, `queries.ts` and `actions.ts`, plus `lib/data.ts` re-exporting the mock queries.
+- [x] `hooks/use-now.ts` and `components/timer-pill.tsx` (UI spec §5), and `SettingsProvider` with the thresholds.
+- [x] Layout components: `Sidebar`, `Topbar` (with the bell dropdown), `BottomNav` (mobile), the mobile drawer (`Sheet`) and the floating "+" button.
 - [ ] Shared components: `StatCard`, `StatusBadge`, `ServicesTable` (desktop table + mobile cards), `ReminderQueue` (send-all dialog with a progress bar using the fake actions, WhatsApp buttons with real `wa.me` links, and skip), `RenewDialog` (live new-date preview and past-date warning), `ClientForm`/`ServiceForm` (auto renewal = start + 1 year, phone preview), `ConfirmDialog`, `EmptyState`, `OtpInput`.
 - [ ] Pages (UI spec §4 and §7.3): login, 2fa, 2fa/setup, dashboard, clients, clients/new, clients/[id], clients/[id]/edit, reminders, payments, notifications, import (3 steps with a client-side CSV preview), settings (5 tabs), not-found and error.
 - [ ] Test at 360, 390, 768, 1024 and 1440 px.
