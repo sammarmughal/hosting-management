@@ -45,15 +45,29 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const returnFocus = React.useRef<HTMLElement | null>(null)
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        onOpenAutoFocus={(event) => {
+          returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+          onOpenAutoFocus?.(event)
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event)
+          if (!event.defaultPrevented && returnFocus.current?.isConnected) {
+            event.preventDefault()
+            returnFocus.current.focus()
+          }
+        }}
         className={cn(
           // Mobile: full-screen sheet. sm and up: centred 480px card (docs/12 §5).
           "fixed inset-0 z-50 flex h-dvh w-full flex-col gap-4 overflow-y-auto bg-popover p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-base text-popover-foreground duration-150 ease-out outline-none sm:inset-auto sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[calc(100dvh-4rem)] sm:max-w-120 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:border sm:border-border sm:p-5 sm:shadow-lg data-open:animate-in data-open:fade-in-0 max-sm:data-open:slide-in-from-bottom-4 sm:data-open:zoom-in-98 data-closed:animate-out data-closed:fade-out-0 max-sm:data-closed:slide-out-to-bottom-4 sm:data-closed:zoom-out-98",

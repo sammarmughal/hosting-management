@@ -34,7 +34,7 @@ export function AccountRow({ name, rail = false }: { name: string; rail?: boolea
   return (
     <div
       className={cn(
-        "flex items-center gap-2.5 border-t border-border p-3",
+        "flex items-center gap-3 border-t border-border p-3",
         rail && "max-lg:flex-col max-lg:gap-2 max-lg:px-0"
       )}
     >

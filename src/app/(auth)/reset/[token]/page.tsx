@@ -1,19 +1,7 @@
 import type { Metadata } from "next"
-
-import { AuthHeading } from "@/components/auth-heading"
-
+import { PasswordResetForm } from "@/components/auth/auth-forms"
 export const metadata: Metadata = { title: "Reset password" }
-
-export default function ResetPage() {
-  return (
-    <>
-      <AuthHeading
-        title="Reset password"
-        description="Choose a new password for your account."
-      />
-      <p className="text-sm text-ink-muted">
-        Coming in a later step: New password, confirm, and Save password.
-      </p>
-    </>
-  )
+export default async function Page({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
+  return <PasswordResetForm token={token} />
 }

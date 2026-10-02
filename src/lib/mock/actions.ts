@@ -24,6 +24,7 @@ import { buildWaLink } from "@/lib/domain/whatsapp"
 import { requireAdmin } from "@/lib/mock/auth"
 import { adminSummaryText, buildMockData, MOCK_SETTINGS } from "@/lib/mock/data"
 import * as store from "@/lib/mock/mutations"
+import { listNotifications } from "@/lib/mock/queries"
 import type { ActionResult } from "@/types/actions"
 import type { NotificationItem } from "@/types/view"
 
@@ -209,6 +210,9 @@ export async function deletePaymentAction(id: number): Promise<ActionResult> {
   await requireAdmin()
   if (!numericId.safeParse(id).success) return invalid()
   await sleep()
+  // Removes the record only; the renewal date is not rolled back (docs/07 §2).
+  if (!store.deletePayment(id)) return { ok: false, error: "Payment not found." }
+  refresh()
   return { ok: true }
 }
 
@@ -330,21 +334,23 @@ export async function getLatestNotificationsAction(): Promise<
 > {
   await requireAdmin()
   await sleep()
-  const items = [...buildMockData(new Date()).notifications]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, 10)
-  return { ok: true, data: { unread: items.filter((n) => !n.isRead).length, items } }
+  const { items, unread } = await listNotifications()
+  return { ok: true, data: { unread, items: items.slice(0, 10) } }
 }
 
 export async function markReadAction(id: string): Promise<ActionResult> {
   await requireAdmin()
   if (!stringId.safeParse(id).success) return invalid()
+  store.markNotificationsRead([id])
+  refresh()
   return { ok: true }
 }
 
 export async function markAllReadAction(): Promise<ActionResult> {
   await requireAdmin()
   await sleep()
+  store.markNotificationsRead(buildMockData(new Date()).notifications.map((n) => n.id))
+  refresh()
   return { ok: true }
 }
 

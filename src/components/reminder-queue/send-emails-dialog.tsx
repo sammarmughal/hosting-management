@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { attemptAction } from "@/lib/attempt-action"
 import {
   CircleCheckIcon,
   CircleIcon,
@@ -122,7 +123,7 @@ function SendFlow({
     for (const id of ids) {
       setStatus((s) => ({ ...s, [id]: "sending" }))
       onSending(id, true)
-      const res = await sendReminderEmailAction(id)
+      const res = await attemptAction(() => sendReminderEmailAction(id))
       onSending(id, false)
       if (res.ok && res.data) {
         setStatus((s) => ({ ...s, [id]: "sent" }))
@@ -137,7 +138,7 @@ function SendFlow({
 
     if (sendSummary) {
       setSummary("sending")
-      const res = await sendAdminSummaryEmailAction()
+      const res = await attemptAction(() => sendAdminSummaryEmailAction())
       setSummary(res.ok ? "sent" : "failed")
       if (!res.ok) setSummaryError(res.error)
     }
@@ -261,7 +262,7 @@ function SendFlow({
         )}
         {phase === "done" && (
           <>
-            {counts.failed > 0 && (
+            {(counts.failed > 0 || summary === "failed") && (
               <Button
                 variant="outline"
                 onClick={() =>
@@ -271,7 +272,7 @@ function SendFlow({
                   )
                 }
               >
-                Retry {plural(counts.failed, "failed email")}
+                {counts.failed > 0 ? `Retry ${plural(counts.failed, "failed email")}` : "Retry summary email"}
               </Button>
             )}
             <Button onClick={onClose}>Close</Button>

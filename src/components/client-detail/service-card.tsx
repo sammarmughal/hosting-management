@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { attemptAction } from "@/lib/attempt-action"
 import {
   BanIcon,
   MailIcon,
@@ -54,7 +55,7 @@ export function ServiceCard({
 
   async function sendEmail() {
     setSending(true)
-    const res = await sendManualEmailAction(s.id)
+    const res = await attemptAction(() => sendManualEmailAction(s.id))
     setSending(false)
     if (res.ok) toast.success(`Reminder emailed to ${s.email}`)
     else toast.error(`Couldn’t email ${s.clientName}`, { description: res.error })
@@ -62,7 +63,7 @@ export function ServiceCard({
 
   async function toggleCancel() {
     setToggling(true)
-    const res = await toggleCancelServiceAction(s.id)
+    const res = await attemptAction(() => toggleCancelServiceAction(s.id))
     setToggling(false)
     if (!res.ok) return void toast.error(res.error)
     toast.success(
@@ -79,13 +80,13 @@ export function ServiceCard({
     >
       <div className="flex items-start justify-between gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <h3 id={`svc-${s.id}`} className="truncate text-md font-semibold">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h3 id={`svc-${s.id}`} title={s.domain} className="truncate text-base font-semibold">
               {s.domain}
             </h3>
             <StatusBadge colour={s.colour} />
           </div>
-          <p className="mt-0.5 text-sm text-ink-muted">
+          <p className="mt-1 text-sm text-ink-muted">
             {s.planLabel ?? "No plan set"}
             {!cancelled && !s.remindersEnabled && " · Reminders off"}
           </p>
@@ -98,16 +99,16 @@ export function ServiceCard({
         />
       </div>
 
-      <div className="flex flex-col gap-4 px-4 py-4 sm:px-5 md:flex-row md:items-center md:gap-8">
+      <div className="flex flex-col gap-4 px-4 py-4 sm:px-5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
         {/* A cancelled service has no timer (docs/10 §2); the badge says Cancelled. */}
         {!cancelled && (
           <TimerPill
             renewalDate={s.renewalDate}
             size="lg"
-            className="self-start md:self-center"
+            className="self-start sm:self-center"
           />
         )}
-        <dl className="grid grid-cols-3 gap-4 text-sm md:flex md:gap-8">
+        <dl className="grid grid-cols-3 gap-4 text-sm sm:flex sm:flex-wrap sm:gap-6">
           <Fact label="Started">{formatDatePK(s.startDate)}</Fact>
           <Fact label="Renews">{formatDatePK(s.renewalDate)}</Fact>
           <Fact label="Amount">
@@ -116,7 +117,7 @@ export function ServiceCard({
         </dl>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 border-t border-border bg-surface-hover px-4 py-3 sm:flex sm:flex-wrap sm:px-5">
+      <div className="flex flex-wrap gap-2 border-t border-border bg-surface-hover px-4 py-3 sm:flex sm:flex-wrap sm:px-5">
         {cancelled ? (
           <Button
             variant="outline"
@@ -131,12 +132,12 @@ export function ServiceCard({
         ) : (
           <>
             <Button
-              variant="success"
+              variant="default"
               size="sm"
               onClick={() => setRenewOpen(true)}
               className="max-sm:h-11"
             >
-              Renew / Mark paid
+              Record renewal
             </Button>
             <WithReason reason={s.email ? null : "No email address for this client"}>
               <Button
@@ -148,7 +149,7 @@ export function ServiceCard({
                 className="max-sm:h-11 max-sm:w-full"
               >
                 <MailIcon />
-                Send email reminder
+                Send reminder
               </Button>
             </WithReason>
             <WithReason reason={s.waLink ? null : "No valid WhatsApp number"}>
@@ -201,7 +202,7 @@ export function ServiceCard({
         }
         confirmLabel="Delete service"
         onConfirm={async () => {
-          const res = await deleteServiceAction(s.id)
+          const res = await attemptAction(() => deleteServiceAction(s.id))
           if (!res.ok) {
             toast.error(res.error)
             return false
@@ -217,7 +218,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   return (
     <div className="min-w-0">
       <dt className="text-xs text-ink-muted">{label}</dt>
-      <dd className="mt-0.5 truncate text-ink">{children}</dd>
+      <dd className="mt-1 truncate text-ink">{children}</dd>
     </div>
   )
 }

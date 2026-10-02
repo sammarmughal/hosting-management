@@ -24,6 +24,7 @@ export const NAV_ITEMS: NavItem[] = [
 ]
 
 export function isActive(pathname: string, href: string) {
+  if (href === "/clients" && pathname.startsWith("/services/")) return true
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 

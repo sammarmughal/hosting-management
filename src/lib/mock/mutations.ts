@@ -148,3 +148,17 @@ export function setReminder(
 ) {
   mockStore().reminders.set(id, { status, ...extra })
 }
+
+export function deletePayment(id: number): boolean {
+  const store = mockStore()
+  const exists = buildMockData(new Date()).payments.some((p) => p.id === id)
+  if (!exists) return false
+  store.payments = store.payments.filter((p) => p.id !== id)
+  store.deletedPayments.add(id)
+  return true
+}
+
+export function markNotificationsRead(ids: readonly string[]) {
+  const read = mockStore().readNotifications
+  for (const id of ids) read.add(id)
+}

@@ -32,7 +32,7 @@ export function StatCard({
     >
       <span className="flex items-center gap-2 text-sm text-ink-muted">
         {dot && <span aria-hidden className={cn("status-dot", STATUS_DOT[dot])} />}
-        <span className="truncate" title={label}>
+        <span className="min-h-10 sm:min-h-0" title={label}>
           {label}
         </span>
       </span>

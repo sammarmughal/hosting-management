@@ -20,7 +20,7 @@ const ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
 ]
 
 const itemClass =
-  "relative flex h-14 flex-col items-center justify-center gap-1 text-xs font-medium outline-none transition-colors focus-visible:bg-surface-subtle"
+  "relative flex h-14 flex-col items-center justify-center gap-1 text-xs font-medium outline-none transition-colors focus-visible:bg-surface-subtle focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/40 hover:bg-surface-hover"
 
 /** Mobile bottom nav: 56px + the iOS safe area (docs/12 §8). */
 export function BottomNav({
@@ -51,7 +51,7 @@ export function BottomNav({
                 className={cn(itemClass, active ? "text-brand-700" : "text-ink-muted")}
               >
                 <span className="relative">
-                  <Icon aria-hidden className="size-5" />
+                  <Icon aria-hidden className="size-4.5" />
                   {count > 0 && (
                     <span
                       aria-hidden
@@ -82,7 +82,7 @@ export function BottomNav({
               moreActive ? "text-brand-700" : "text-ink-muted"
             )}
           >
-            <MenuIcon aria-hidden className="size-5" />
+            <MenuIcon aria-hidden className="size-4.5" />
             More
           </button>
         </li>

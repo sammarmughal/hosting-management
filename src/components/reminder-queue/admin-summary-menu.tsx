@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { attemptAction } from "@/lib/attempt-action"
 import { ChevronDownIcon, MailIcon, MessageCircleIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -32,7 +33,7 @@ export function AdminSummaryMenu({
 
   async function emailSummary() {
     setSending(true)
-    const res = await sendAdminSummaryEmailAction()
+    const res = await attemptAction(() => sendAdminSummaryEmailAction())
     setSending(false)
     if (res.ok) toast.success(`Summary emailed to ${adminEmail}`)
     else toast.error("Couldn't email the summary", { description: res.error })
@@ -63,7 +64,7 @@ export function AdminSummaryMenu({
               href={waLink}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => void adminSummaryWhatsappAction()}
+              onClick={() => void attemptAction(() => adminSummaryWhatsappAction())}
             >
               <MessageCircleIcon />
               WhatsApp me the summary

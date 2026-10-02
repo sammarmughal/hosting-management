@@ -26,9 +26,22 @@ The app never runs background jobs. It checks for due reminders when the admin o
 | 11 | [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) | Neon + Vercel + Hostinger Node.js, go-live, backups |
 | — | [CLAUDE.md](CLAUDE.md) | Rules for the AI coding assistant in VS Code |
 
-## Next step
+## Client review demo
 
-Create the Next.js project (Phase 0), then build **Phase 1: UI with mock data** from `docs/09-TASKS.md`, following `docs/06-UI-SPEC.md`. All screens are built in the real app with mock data, before the database and auth.
+The UI demo includes dashboard, clients and services, renewals, reminders, payments and CSV export, notifications, CSV import, settings, and authentication/recovery screens. Responsive layouts and keyboard interactions have been reviewed at 360, 390, 768, 1024 and 1440px. See [the completed UI review](docs/ui-review.md).
+
+Install Node.js 20.9 or newer, then run:
+
+```sh
+npm ci
+npm run dev
+```
+
+Open http://localhost:3000. For a production build, run `npm run build`.
+
+Demo sign-in: username `rehman`, password `Renewals2026!`, verification code `123456`. These are public test fixtures, not production credentials.
+
+This is Phase 1 with sample data and mock actions. Authentication, two-step verification, persistence and email sending are simulated; the QR setup screen is a preview. Changes in the demo are not durable database records. Real backend integrations are the next implementation phase.
 
 ## Key decisions at a glance
 

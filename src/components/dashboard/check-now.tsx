@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { attemptAction } from "@/lib/attempt-action"
 import { RefreshCwIcon } from "lucide-react"
 import { toast } from "sonner"
 
@@ -31,7 +32,7 @@ export function CheckNow({
 
   async function check() {
     setChecking(true)
-    const res = await checkNowAction()
+    const res = await attemptAction(() => checkNowAction())
     setChecking(false)
     if (!res.ok || !res.data) {
       toast.error("Check failed", { description: res.ok ? undefined : res.error })

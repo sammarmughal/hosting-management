@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { attemptAction } from "@/lib/attempt-action"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { TriangleAlertIcon } from "lucide-react"
 import { Controller, useForm, useWatch } from "react-hook-form"
@@ -122,7 +123,7 @@ function RenewForm({
   const stillPast = newDate <= today
 
   async function onSubmit(values: RenewData) {
-    const res = await renewServiceAction(values)
+    const res = await attemptAction(() => renewServiceAction(values))
     if (!res.ok) {
       for (const [field, message] of Object.entries(res.fieldErrors ?? {})) {
         setError(field as keyof RenewInput, { message })

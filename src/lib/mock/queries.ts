@@ -1,6 +1,13 @@
 // Mock queries (docs/06 §7.2). Same signatures as lib/server/queries.ts will
 // have in Phase 4, returning the view-model types.
-import { formatDatePK } from "@/lib/domain/dates"
+import { formatDatePK, todayPK } from "@/lib/domain/dates"
+import { preferences } from "@/lib/mock/preferences"
+import {
+  inRange,
+  type DateRange,
+  type PaymentParams,
+  type ReminderLogParams,
+} from "@/lib/list-filters"
 import { formatMoney, sumAmounts, toCents } from "@/lib/domain/money"
 import { buildWaLink } from "@/lib/domain/whatsapp"
 import type { ServiceFilter, ServiceSort } from "@/lib/service-filters"
@@ -56,7 +63,42 @@ function totalsByCurrency(rows: { currency: string; amount: string }[]) {
 /* Settings and shell ------------------------------------------------ */
 
 export async function getSettings() {
-  return MOCK_SETTINGS
+  const p = preferences()
+  return {
+    ...MOCK_SETTINGS,
+    ...p.business,
+    thresholds: { orange: p.reminders.orange, red: p.reminders.red },
+    stages: p.reminders.stages,
+    checkIntervalMinutes: p.reminders.interval,
+  }
+}
+
+export async function getRecentLogins() {
+  const now = Date.now()
+  return [
+    {
+      at: new Date(now - 3600000).toISOString(),
+      device: "Chrome · Windows",
+      address: "192.0.2.14",
+      current: true,
+    },
+    {
+      at: new Date(now - 86400000).toISOString(),
+      device: "Safari · iPhone",
+      address: "192.0.2.28",
+      current: false,
+    },
+    {
+      at: new Date(now - 3 * 86400000).toISOString(),
+      device: "Chrome · Windows",
+      address: "192.0.2.14",
+      current: false,
+    },
+  ]
+}
+
+export async function getPreferences() {
+  return structuredClone(preferences())
 }
 
 export async function getShellSummary(): Promise<ShellSummary> {
@@ -72,41 +114,19 @@ export async function getShellSummary(): Promise<ShellSummary> {
 
 /* Dashboard --------------------------------------------------------- */
 
-export interface DashboardData {
-  stats: DashboardStats
+/** Everything <ReminderQueue> needs (dashboard and /reminders). */
+export interface ReminderQueueData {
   /** Services with at least one client reminder still needing action. */
   queue: QueueItem[]
-  /** Active services with ≤ 30 days left or expired, most urgent first (max 10). */
-  dueSoon: ServiceRow[]
-  lastCheckAt: string
   adminEmail: string
   /** wa.me link to the admin's own number with the summary text (docs/08 §5.2). */
   adminSummaryWaLink: string | null
 }
 
-export async function getDashboard(): Promise<DashboardData> {
-  const d = data()
-  const t = MOCK_SETTINGS.thresholds
-  const active = d.services.filter((s) => s.status === "active")
-  const in30 = active.filter((s) => s.daysLeft >= 0 && s.daysLeft <= 30)
+function reminderQueue(d: MockData): ReminderQueueData {
   const queue = buildQueue(d.reminders)
-
   return {
-    stats: {
-      active: active.length,
-      expiring30: active.filter((s) => s.daysLeft >= 0 && s.daysLeft <= t.orange).length,
-      urgent7: active.filter((s) => s.daysLeft >= 0 && s.daysLeft <= t.red).length,
-      expired: active.filter((s) => s.daysLeft < 0).length,
-      expected30: totalsByCurrency(
-        in30.map((s) => ({ currency: s.currency, amount: s.chargeAmount }))
-      ),
-    },
     queue,
-    dueSoon: active
-      .filter((s) => s.daysLeft <= 30)
-      .sort((a, b) => a.daysLeft - b.daysLeft)
-      .slice(0, 10),
-    lastCheckAt: d.lastCheckAt,
     adminEmail: MOCK_SETTINGS.adminEmail,
     adminSummaryWaLink: queue.length
       ? buildWaLink(
@@ -117,6 +137,42 @@ export async function getDashboard(): Promise<DashboardData> {
           )
         )
       : null,
+  }
+}
+
+export async function getReminderQueue(): Promise<ReminderQueueData> {
+  return reminderQueue(data())
+}
+
+export interface DashboardData extends ReminderQueueData {
+  stats: DashboardStats
+  /** Active services with ≤ 30 days left or expired, most urgent first (max 10). */
+  dueSoon: ServiceRow[]
+  lastCheckAt: string
+}
+
+export async function getDashboard(): Promise<DashboardData> {
+  const d = data()
+  const t = MOCK_SETTINGS.thresholds
+  const active = d.services.filter((s) => s.status === "active")
+  const in30 = active.filter((s) => s.daysLeft >= 0 && s.daysLeft <= 30)
+
+  return {
+    ...reminderQueue(d),
+    stats: {
+      active: active.length,
+      expiring30: active.filter((s) => s.daysLeft >= 0 && s.daysLeft <= t.orange).length,
+      urgent7: active.filter((s) => s.daysLeft >= 0 && s.daysLeft <= t.red).length,
+      expired: active.filter((s) => s.daysLeft < 0).length,
+      expected30: totalsByCurrency(
+        in30.map((s) => ({ currency: s.currency, amount: s.chargeAmount }))
+      ),
+    },
+    dueSoon: active
+      .filter((s) => s.daysLeft <= 30)
+      .sort((a, b) => a.daysLeft - b.daysLeft)
+      .slice(0, 10),
+    lastCheckAt: d.lastCheckAt,
   }
 }
 
@@ -141,13 +197,6 @@ function buildQueue(reminders: ReminderRow[]): QueueItem[] {
     .sort(
       (a, b) => a.service.daysLeft - b.service.daysLeft || a.service.id - b.service.id
     )
-}
-
-/** Most urgent first: expired, then by days left. */
-function sortQueue(rows: ReminderRow[]) {
-  return [...rows].sort(
-    (a, b) => a.service.daysLeft - b.service.daysLeft || a.id.localeCompare(b.id)
-  )
 }
 
 /* Clients / services ------------------------------------------------ */
@@ -311,23 +360,85 @@ export async function getService(id: number): Promise<ServiceRow | null> {
 
 /* Reminders, payments, notifications -------------------------------- */
 
-export async function listReminders(): Promise<{
-  queue: ReminderRow[]
-  log: ReminderRow[]
-}> {
-  const rows = data().reminders
+export interface Page<T> {
+  rows: T[]
+  total: number
+  page: number
+  pageSize: number
+  /** Rows before any filter (0 = nothing yet, not "no matches"). */
+  totalAll: number
+}
+
+function paginate<T>(all: T[], filtered: T[], page: number): Page<T> {
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const p = Math.min(Math.max(1, page), pages)
+  const start = (p - 1) * PAGE_SIZE
   return {
-    queue: sortQueue(rows.filter((r) => OPEN_STATUSES.includes(r.status))),
-    log: [...rows].sort((a, b) => (b.sentAt ?? "").localeCompare(a.sentAt ?? "")),
+    rows: filtered.slice(start, start + PAGE_SIZE),
+    total: filtered.length,
+    page: p,
+    pageSize: PAGE_SIZE,
+    totalAll: all.length,
   }
 }
 
-export async function listPayments(): Promise<{
-  rows: PaymentRow[]
+const contains = (needle: string, ...values: (string | null | undefined)[]) =>
+  values.some((v) => v?.toLowerCase().includes(needle))
+
+/** Reminder log (docs/06 §4.9): newest first, rows not sent yet at the top. */
+export async function listReminderLog(
+  filters: ReminderLogParams
+): Promise<Page<ReminderRow>> {
+  const all = data().reminders
+  const needle = filters.q.toLowerCase()
+  const filtered = all
+    .filter((r) => {
+      if (filters.channel && r.channel !== filters.channel) return false
+      if (filters.status && r.status !== filters.status) return false
+      if (filters.from || filters.to) {
+        if (!r.sentAt || !inRange(todayPK(new Date(r.sentAt)), filters)) return false
+      }
+      return (
+        !needle ||
+        contains(needle, r.service.domain, r.service.clientName, r.service.company)
+      )
+    })
+    .sort((a, b) => {
+      if (!a.sentAt !== !b.sentAt) return a.sentAt ? 1 : -1
+      return (b.sentAt ?? "").localeCompare(a.sentAt ?? "") || a.id.localeCompare(b.id)
+    })
+  return paginate(all, filtered, filters.page)
+}
+
+export interface PaymentList extends Page<PaymentRow> {
+  /** Totals per currency for the whole filtered range (not just this page). */
   totals: { currency: string; total: string }[]
-}> {
-  const rows = data().payments
-  return { rows, totals: totalsByCurrency(rows) }
+}
+
+/** Payments (docs/06 §4.10), newest first. */
+export async function listPayments(filters: PaymentParams): Promise<PaymentList> {
+  const all = data().payments
+  const filtered = filterPayments(all, filters)
+  return {
+    ...paginate(all, filtered, filters.page),
+    totals: totalsByCurrency(filtered),
+  }
+}
+
+/** Every payment in a date range (CSV export). */
+export async function exportPayments(
+  range: DateRange & { q?: string }
+): Promise<PaymentRow[]> {
+  return filterPayments(data().payments, range)
+}
+
+function filterPayments(rows: PaymentRow[], range: DateRange & { q?: string }) {
+  const needle = range.q?.toLowerCase()
+  return rows.filter(
+    (p) =>
+      inRange(p.paidOn, range) &&
+      (!needle || contains(needle, p.clientName, p.domain, p.reference, p.method))
+  )
 }
 
 export async function listNotifications(): Promise<{

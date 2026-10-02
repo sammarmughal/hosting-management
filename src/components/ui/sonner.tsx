@@ -52,7 +52,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }
       toastOptions={{
         classNames: {
-          toast: "font-sans! text-base! shadow-lg! gap-2.5!",
+          toast: "font-sans! text-base! shadow-lg! gap-3!",
           title: "font-medium!",
           description: "text-sm! text-ink-muted!",
           actionButton: "bg-primary! text-primary-foreground! rounded-md! font-medium!",

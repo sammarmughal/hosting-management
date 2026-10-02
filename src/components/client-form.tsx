@@ -1,5 +1,7 @@
 "use client"
 
+import { attemptAction } from "@/lib/attempt-action"
+
 import * as React from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { CheckIcon, CircleXIcon, TriangleAlertIcon } from "lucide-react"
@@ -81,8 +83,8 @@ export function ClientForm(
     // Send the raw values; the action validates (and normalises) them again.
     const values = form.getValues()
     const res = isNew
-      ? await createClientWithServiceAction(values as NewClientInput)
-      : await updateClientAction(props.clientId, values as ClientInput)
+      ? await attemptAction(() => createClientWithServiceAction(values as NewClientInput))
+      : await attemptAction(() => updateClientAction(props.clientId, values as ClientInput))
     handleFailure(res, form.setError)
   }
 
@@ -128,8 +130,8 @@ export function ServiceForm(
     const values = form.getValues() as ServiceInput
     const res =
       props.mode === "new"
-        ? await createServiceAction(props.clientId, values)
-        : await updateServiceAction(props.serviceId, values)
+        ? await attemptAction(() => createServiceAction(props.clientId, values))
+        : await attemptAction(() => updateServiceAction(props.serviceId, values))
     handleFailure(res, form.setError)
   }
 
@@ -177,7 +179,7 @@ function Section({
   children: React.ReactNode
 }) {
   return (
-    <section className="grid gap-4 border-b border-border pb-8 not-first:pt-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] lg:gap-8">
+    <section className="grid gap-4 border-b border-border pb-6 not-first:pt-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] xl:gap-8">
       <div>
         <h2 className="text-base font-semibold">{title}</h2>
         <p className="mt-1 max-w-xs text-sm text-ink-muted">{description}</p>
@@ -454,7 +456,7 @@ function ServiceFields({
                   setManual(false)
                   applyAuto()
                 }}
-                className="font-medium text-brand-700 hover:underline"
+                className="inline-flex min-h-11 items-center font-medium text-brand-700 hover:underline"
               >
                 Reset
               </button>{" "}

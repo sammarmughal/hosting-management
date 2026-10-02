@@ -275,6 +275,12 @@
    4. Components
    ------------------------------------------------------------------ */
 @layer components {
+  .form-action-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
   /* Timer pill (docs/06 §3.1, docs/12 §5). Min-widths are in ch of the
      mono font so a ticking column never changes width. */
   .timer-pill {
@@ -285,7 +291,8 @@
     align-items: center;
     gap: var(--pill-gap);
     height: 24px;
-    min-width: calc(16ch + var(--pill-dot) + var(--pill-gap) + 2 * var(--pill-pad));
+    width: calc(20ch + var(--pill-dot) + var(--pill-gap) + 2 * var(--pill-pad));
+    flex: none;
     padding: 0 var(--pill-pad);
     border-radius: 999px;
     font-family: var(--font-mono);
@@ -295,7 +302,7 @@
     white-space: nowrap;
   }
   .timer-pill--sm {
-    min-width: calc(7ch + var(--pill-dot) + var(--pill-gap) + 2 * var(--pill-pad));
+    width: calc(20ch + var(--pill-dot) + var(--pill-gap) + 2 * var(--pill-pad));
   }
   .timer-pill--lg {
     --pill-dot: 8px;
@@ -373,6 +380,44 @@
 /* ------------------------------------------------------------------
    5. Motion: respect reduced-motion (no pulse, instant transitions)
    ------------------------------------------------------------------ */
+/* Shared mobile controls keep the 44px touch target across forms and lists. */
+@media (max-width: 767px) {
+  .form-action-bar {
+    position: sticky;
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    z-index: 20;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    padding: 12px 0;
+  }
+  .form-action-bar > [data-slot="button"] {
+    flex: 1;
+  }
+  [data-slot="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  button:not([data-slot="checkbox"]):not([data-slot="switch"]) {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  main a:not([data-slot]):not(.group):not([role]) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+    max-width: 100%;
+  }
+  main a.truncate:not([data-slot]):not(.group) {
+    display: block;
+    line-height: 44px;
+  }
+  [data-slot="input"],
+  [data-slot="select-trigger"] {
+    min-height: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,

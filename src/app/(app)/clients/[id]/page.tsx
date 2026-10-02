@@ -58,8 +58,8 @@ export default async function ClientPage({ params, searchParams }: Props) {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="order-2 flex min-w-0 flex-col gap-6 lg:order-1">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
+        <div className="order-2 flex min-w-0 flex-col gap-6 xl:order-1">
           <section aria-labelledby="services-title" className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-3">
               <h2 id="services-title" className="text-base font-semibold">
@@ -95,7 +95,7 @@ export default async function ClientPage({ params, searchParams }: Props) {
           />
         </div>
 
-        <aside className="order-1 lg:sticky lg:top-21 lg:order-2">
+        <aside className="order-1 xl:sticky xl:top-21 xl:order-2">
           <ContactCard client={client} />
         </aside>
       </div>

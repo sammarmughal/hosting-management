@@ -59,10 +59,10 @@ export function ServicesTable({
   }
 
   return (
-    <>
+    <div className="@container">
       {/* Desktop / tablet */}
-      <div className="hidden md:block">
-        <Table className="min-w-180 table-fixed">
+      <div className="hidden @min-[800px]:block">
+        <Table className="min-w-[800px] table-fixed">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[28%]">Client</TableHead>
@@ -94,7 +94,7 @@ export function ServicesTable({
                   <Link
                     href={clientHref(s)}
                     title={s.clientName}
-                    className="block truncate font-medium text-ink outline-none hover:underline focus-visible:underline"
+                    className="block truncate font-medium text-ink outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/40"
                   >
                     {s.clientName}
                   </Link>
@@ -118,7 +118,7 @@ export function ServicesTable({
                 <TableCell className="text-ink-muted">
                   {formatDatePK(s.renewalDate)}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-right font-mono">
                   {formatMoney(s.chargeAmount, s.currency)}
                 </TableCell>
                 <TableCell className="pl-6">
@@ -134,18 +134,19 @@ export function ServicesTable({
       </div>
 
       {/* Mobile cards (docs/06 §4.5) */}
-      <ul className="divide-y divide-border md:hidden">
+      <ul className="divide-y divide-border @min-[800px]:hidden">
         {rows.map((s) => (
           <li key={s.id} className="px-4 py-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <Link
                   href={clientHref(s)}
-                  className="block truncate text-base font-medium text-ink outline-none hover:underline focus-visible:underline"
+                  title={s.clientName}
+                  className="block truncate text-base font-medium text-ink outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/40"
                 >
                   {s.clientName}
                 </Link>
-                <div className="truncate text-sm text-ink-muted">{s.domain}</div>
+                <div title={s.domain} className="truncate text-sm text-ink-muted">{s.domain}</div>
               </div>
               <RowActions service={s} onRenew={openRenew} touch />
             </div>
@@ -173,7 +174,7 @@ export function ServicesTable({
       </ul>
 
       <RenewDialog service={renewing} open={renewOpen} onOpenChange={setRenewOpen} />
-    </>
+    </div>
   )
 }
 

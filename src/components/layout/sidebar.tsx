@@ -20,7 +20,7 @@ export function Sidebar({
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-18 flex-col border-r border-border bg-sidebar md:flex lg:w-60">
       <Link
         href="/dashboard"
-        className="flex h-15 shrink-0 items-center gap-2.5 px-5 outline-none focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:ring-inset max-lg:justify-center max-lg:px-0"
+        className="flex h-15 shrink-0 items-center gap-3 px-5 outline-none focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:ring-inset max-lg:justify-center max-lg:px-0"
       >
         <LogoMark />
         <span className="text-base font-semibold text-ink max-lg:sr-only">Renewals</span>

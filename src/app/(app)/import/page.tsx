@@ -1,13 +1,11 @@
 import type { Metadata } from "next"
 
-import { PagePlaceholder } from "@/components/page-placeholder"
+import { ImportFlow } from "@/components/import/import-flow"
+import { exportServices } from "@/lib/data"
 
 export const metadata: Metadata = { title: "Import" }
 
-export default function ImportPage() {
-  return (
-    <PagePlaceholder>
-      Upload a CSV, preview every row, then import the valid ones.
-    </PagePlaceholder>
-  )
+export default async function ImportPage() {
+  const services = await exportServices()
+  return <ImportFlow domains={services.map((s) => s.domain)} />
 }

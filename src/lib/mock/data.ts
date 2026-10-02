@@ -298,7 +298,7 @@ const REMINDERS: ReminderSeed[] = [
 
 interface NotificationSeed {
   id: string
-  type: "reminder_due" | "email_failed" | "renewed"
+  type: "reminder_due" | "expired" | "email_failed" | "renewed"
   serviceId: number
   agoMin: number
   isRead: boolean
@@ -348,7 +348,7 @@ const NOTIFICATIONS: NotificationSeed[] = [
   },
   {
     id: "n5",
-    type: "reminder_due",
+    type: "expired",
     serviceId: 103,
     agoMin: 26 * 60,
     isRead: true,
@@ -364,7 +364,7 @@ const NOTIFICATIONS: NotificationSeed[] = [
   },
   {
     id: "n7",
-    type: "reminder_due",
+    type: "expired",
     serviceId: 112,
     agoMin: 3 * 24 * 60,
     isRead: true,
@@ -473,6 +473,8 @@ export interface MockStore {
   clients: ClientSeed[]
   payments: StoredPayment[]
   reminders: Map<string, ReminderOverride>
+  deletedPayments: Set<number>
+  readNotifications: Set<string>
   nextId: number
 }
 
@@ -483,6 +485,8 @@ export function mockStore(): MockStore {
     clients: structuredClone(CLIENTS),
     payments: [],
     reminders: new Map(),
+    deletedPayments: new Set(),
+    readNotifications: new Set(),
     nextId: 1000,
   }
   return globalStore.__renewalsMockStore
@@ -584,8 +588,8 @@ export function buildMockData(now: Date): MockData {
         type: n.type,
         title: n.title(s),
         createdAt: minutesAgo(n.agoMin),
-        isRead: n.isRead,
-        href: `/clients/${s.clientId}`,
+        isRead: n.isRead || store.readNotifications.has(n.id),
+        href: `/clients/${s.clientId}#svc-${s.id}`,
       },
     ]
   })
@@ -593,7 +597,7 @@ export function buildMockData(now: Date): MockData {
   const seeded: PaymentRow[] = PAYMENTS.flatMap((p) => {
     const s = byId.get(p.serviceId)
     const periodTo = seedRenewal.get(p.serviceId)
-    if (!s || !periodTo) return []
+    if (!s || !periodTo || store.deletedPayments.has(p.id)) return []
     const periodFrom = minusOneYear(periodTo)
     return [
       {
@@ -632,11 +636,11 @@ export function buildMockData(now: Date): MockData {
 }
 
 const SUMMARY_DOT: Record<ServiceRow["colour"], string> = {
-  red: "🔴",
-  orange: "🟠",
-  expired: "⚫",
-  green: "🟢",
-  cancelled: "⚪",
+  red: "Urgent:",
+  orange: "Expiring:",
+  expired: "Expired:",
+  green: "Active:",
+  cancelled: "Cancelled:",
 }
 
 /** The admin WhatsApp summary (docs/08 §5.2), most urgent first. */

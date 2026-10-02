@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { attemptAction } from "@/lib/attempt-action"
 import {
   CalendarCheck2Icon,
   CheckIcon,
@@ -104,7 +105,7 @@ export function ReminderQueue({
     const row = item.email
     if (!row) return
     setSending((s) => toggle(s, row.id, true))
-    const res = await sendReminderEmailAction(row.id)
+    const res = await attemptAction(() => sendReminderEmailAction(row.id))
     setSending((s) => toggle(s, row.id, false))
     if (res.ok && res.data) {
       patchRow(row.id, { status: "sent", sentAt: res.data.sentAt, lastError: null })
@@ -119,14 +120,14 @@ export function ReminderQueue({
   function openedWhatsApp(row: ReminderRow) {
     // Optimistic: the link opens in a new tab right away.
     patchRow(row.id, { status: "opened", sentAt: new Date().toISOString() })
-    void markOpenedAction(row.id).then((res) => {
+    void attemptAction(() => markOpenedAction(row.id)).then((res) => {
       if (!res.ok) toast.error(res.error)
     })
   }
 
   async function markSent(row: ReminderRow) {
     setBusy((s) => toggle(s, row.id, true))
-    const res = await markSentAction(row.id)
+    const res = await attemptAction(() => markSentAction(row.id))
     setBusy((s) => toggle(s, row.id, false))
     if (res.ok) patchRow(row.id, { status: "sent", sentAt: new Date().toISOString() })
     else toast.error(res.error)
@@ -143,7 +144,7 @@ export function ReminderQueue({
     const commit = () => {
       if (settled) return
       settled = true
-      void Promise.all(ids.map((id) => skipReminderAction(id))).then((results) => {
+      void Promise.all(ids.map((id) => attemptAction(() => skipReminderAction(id)))).then((results) => {
         if (results.some((r) => !r.ok))
           toast.error("Couldn't skip the reminder. Try again.")
       })
@@ -295,12 +296,13 @@ function QueueRow({
         aria-hidden
         className={cn("absolute inset-y-0 left-0 w-0.75", BAR[s.colour])}
       />
-      <div className="flex flex-col gap-3 py-4 pr-4 pl-4.75 sm:pr-5 sm:pl-5.75">
+      <div className="flex flex-col gap-3 px-4 py-4 sm:px-5">
         <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
           <div className="min-w-0">
             <p className="truncate text-base">
               <Link
                 href={`/clients/${s.clientId}`}
+                title={`${s.domain} · ${s.clientName}`}
                 className="font-medium text-ink outline-none hover:underline focus-visible:underline"
               >
                 {s.domain}
@@ -325,7 +327,7 @@ function QueueRow({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2.5 md:flex-row md:flex-wrap md:items-center md:gap-x-8">
+        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center md:gap-x-8">
           <Channel label="Email">
             <EmailState item={item} sending={emailSending} onRetry={onRetryEmail} />
           </Channel>

@@ -29,7 +29,7 @@ export function MobileNav({
         }}
         className="w-72 gap-0 bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       >
-        <div className="flex h-14 items-center gap-2.5 px-5">
+        <div className="flex h-14 items-center gap-3 px-5">
           <LogoMark />
           <SheetTitle className="text-base">Renewals</SheetTitle>
           <SheetDescription className="sr-only">Main navigation</SheetDescription>

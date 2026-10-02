@@ -39,12 +39,15 @@ export function KeyboardShortcuts() {
         // Hidden inputs (display: none) have no offsetParent.
         const search = [
           ...document.querySelectorAll<HTMLInputElement>(
-            `[data-search-shortcut], #${GLOBAL_SEARCH_ID}`
+            "main [data-search-shortcut]"
           ),
-        ].find((el) => el.offsetParent !== null)
-        if (search) {
+        ].find((el) => el.offsetParent !== null) ?? document.getElementById(GLOBAL_SEARCH_ID)
+        if (search && search.offsetParent !== null) {
           e.preventDefault()
           search.focus()
+        } else {
+          e.preventDefault()
+          router.push("/clients?focus=search")
         }
       } else if ((e.key === "n" || e.key === "N") && pathname !== "/clients/new") {
         e.preventDefault()

@@ -35,10 +35,10 @@ export function Topbar({
           onClick={onOpenMenu}
           className="size-11 group-has-data-breadcrumb/topbar:hidden md:hidden"
         >
-          <MenuIcon className="size-5" />
+          <MenuIcon className="size-4" />
         </Button>
         {crumbs}
-        <h1 className="min-w-0 flex-1 truncate text-md font-semibold text-ink group-has-data-breadcrumb/topbar:hidden md:text-xl md:tracking-[-0.01em]">
+        <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-ink group-has-data-breadcrumb/topbar:hidden tracking-[-0.01em]">
           {title}
         </h1>
         {/* The Clients page has its own search, so the topbar one would be a duplicate there. */}

@@ -1,16 +1,13 @@
 "use client"
 
+import { attemptAction } from "@/lib/attempt-action"
+
 import * as React from "react"
-import {
-  BellIcon,
-  CalendarClockIcon,
-  CircleCheckIcon,
-  MailXIcon,
-  type LucideIcon,
-} from "lucide-react"
+import { BellIcon } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 
+import { NotificationRow } from "@/components/notification-row"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -20,16 +17,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { formatDateTimePK, formatRelative } from "@/lib/domain/relative-time"
 import { getLatestNotificationsAction, markAllReadAction } from "@/lib/mock/actions"
-import { cn } from "@/lib/utils"
 import type { NotificationItem } from "@/types/view"
-
-const TYPE_ICON: Record<string, LucideIcon> = {
-  reminder_due: CalendarClockIcon,
-  email_failed: MailXIcon,
-  renewed: CircleCheckIcon,
-}
 
 function CountBadge({ count }: { count: number }) {
   if (count <= 0) return null
@@ -53,23 +42,34 @@ const bellLabel = (unread: number) =>
 export function NotificationBell({ initialUnread }: { initialUnread: number }) {
   const [unread, setUnread] = React.useState(initialUnread)
   const [items, setItems] = React.useState<NotificationItem[] | null>(null)
+  const [seenUnread, setSeenUnread] = React.useState(initialUnread)
+  if (seenUnread !== initialUnread) {
+    setSeenUnread(initialUnread)
+    setUnread(initialUnread)
+    if (initialUnread === 0)
+      setItems((prev) => prev?.map((n) => ({ ...n, isRead: true })) ?? prev)
+  }
   const [error, setError] = React.useState(false)
   const [marking, startMarking] = React.useTransition()
 
   async function load() {
     setError(false)
-    const res = await getLatestNotificationsAction()
-    if (res.ok && res.data) {
-      setItems(res.data.items)
-      setUnread(res.data.unread)
-    } else {
+    try {
+      const res = await attemptAction(() => getLatestNotificationsAction())
+      if (res.ok && res.data) {
+        setItems(res.data.items)
+        setUnread(res.data.unread)
+      } else {
+        setError(true)
+      }
+    } catch {
       setError(true)
     }
   }
 
   function markAll() {
     startMarking(async () => {
-      const res = await markAllReadAction()
+      const res = await attemptAction(() => markAllReadAction())
       if (!res.ok) {
         toast.error(res.error)
         return
@@ -146,7 +146,15 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
             ) : items.length === 0 ? (
               <p className="px-3 py-6 text-sm text-ink-muted">No notifications yet.</p>
             ) : (
-              items.map((n) => <NotificationRow key={n.id} item={n} />)
+              items.map((n) => (
+                <DropdownMenuItem
+                  key={n.id}
+                  asChild
+                  className="items-start gap-3 px-3 py-2.5"
+                >
+                  <NotificationRow item={n} />
+                </DropdownMenuItem>
+              ))
             )}
           </div>
 
@@ -161,46 +169,5 @@ export function NotificationBell({ initialUnread }: { initialUnread: number }) {
         </DropdownMenuContent>
       </DropdownMenu>
     </>
-  )
-}
-
-function NotificationRow({ item }: { item: NotificationItem }) {
-  const Icon = TYPE_ICON[item.type] ?? BellIcon
-  const now = new Date()
-  return (
-    <DropdownMenuItem asChild className="items-start gap-3 px-3 py-2.5">
-      <Link href={item.href ?? "/notifications"}>
-        <Icon
-          aria-hidden
-          className={cn(
-            "mt-0.5 size-4",
-            item.type === "email_failed" ? "text-red-fg" : "text-ink-subtle"
-          )}
-        />
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span
-            className={cn(
-              "line-clamp-2 text-sm",
-              item.isRead ? "text-ink-muted" : "text-ink"
-            )}
-          >
-            {item.title}
-          </span>
-          <time
-            dateTime={item.createdAt}
-            title={formatDateTimePK(item.createdAt)}
-            className="text-xs text-ink-subtle"
-          >
-            {formatRelative(item.createdAt, now)}
-          </time>
-        </span>
-        {!item.isRead && (
-          <span
-            aria-label="Unread"
-            className="mt-1.5 size-2 shrink-0 rounded-full bg-brand-500"
-          />
-        )}
-      </Link>
-    </DropdownMenuItem>
   )
 }

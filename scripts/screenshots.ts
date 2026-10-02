@@ -3,7 +3,7 @@
  *
  *   npm run shots -- /styleguide /dashboard
  *
- * Writes ./screenshots/<route>-<width>.png at 390px and 1440px. Uses the
+ * Writes ./screenshots/<route>-<width>.png at all five review widths. Uses the
  * server at BASE_URL (default http://localhost:3000), or starts `next dev`
  * if nothing is listening. Console errors, page errors and hydration
  * warnings are printed, and the exit code is 1 if there were any.
@@ -15,7 +15,7 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "@playwright/test"
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000"
-const WIDTHS = [390, 1440] as const
+const WIDTHS = [360, 390, 768, 1024, 1440] as const
 const OUT_DIR = path.resolve("screenshots")
 
 function fileName(route: string, width: number) {
@@ -133,7 +133,7 @@ async function main() {
           issues.push(`horizontal page scroll: ${overflow}px wider than viewport`)
 
         const file = path.join(OUT_DIR, fileName(route, width))
-        await page.screenshot({ path: file, fullPage: true, animations: "disabled" })
+        await page.screenshot({ caret: "initial", path: file, fullPage: true, animations: "disabled" })
 
         const status = res?.status() ?? 0
         console.log(

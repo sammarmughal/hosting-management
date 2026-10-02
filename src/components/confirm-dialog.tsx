@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { InlineAlert } from "@/components/inline-alert"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -36,12 +37,16 @@ export function ConfirmDialog({
   destructive?: boolean
 }) {
   const [busy, setBusy] = React.useState(false)
+  const [error, setError] = React.useState("")
 
   async function confirm() {
     setBusy(true)
+    setError("")
     try {
       const result = await onConfirm()
       if (result !== false) onOpenChange(false)
+    } catch {
+      setError("Couldn’t complete this action. Try again.")
     } finally {
       setBusy(false)
     }
@@ -53,12 +58,12 @@ export function ConfirmDialog({
         showCloseButton={!busy}
         onEscapeKeyDown={(e) => busy && e.preventDefault()}
         onInteractOutside={(e) => busy && e.preventDefault()}
-        className="max-sm:inset-x-0 max-sm:top-auto max-sm:bottom-0 max-sm:h-auto max-sm:rounded-t-lg"
       >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {error && <InlineAlert>{error}</InlineAlert>}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             Cancel
