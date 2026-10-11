@@ -1,4 +1,5 @@
 // WhatsApp click-to-chat helpers (docs/08 §4). No API: just wa.me links.
+import { parsePhoneNumberFromString } from "libphonenumber-js"
 
 /** Pakistan. Could become a setting later. */
 export const DEFAULT_COUNTRY_CODE = "92"
@@ -30,15 +31,51 @@ export function normalisePhone(input: string | null | undefined): string | null 
   return /^\d{10,15}$/.test(s) ? s : null
 }
 
-/** "923001234567" → "+92 300 1234567". Other countries: "+" + digits. */
+/**
+ * International format: "923001234567" → "+92 300 1234567" (the Pakistani
+ * format, unchanged), "971501234567" → "+971 50 123 4567". Numbers
+ * libphonenumber-js can't place fall back to "+" + digits.
+ */
 export function formatPhone(digits: string): string {
   const pk = /^92(\d{3})(\d{7})$/.exec(digits)
   if (pk) return `+92 ${pk[1]} ${pk[2]}`
-  return `+${digits}`
+  const parsed = parsePhoneNumberFromString(`+${digits}`)
+  return parsed ? parsed.formatInternational() : `+${digits}`
 }
 
 /** https://wa.me/<digits>?text=<encoded message>; no text → plain chat link. */
 export function buildWaLink(digits: string, message?: string): string {
   const base = `https://wa.me/${digits}`
   return message ? `${base}?text=${encodeURIComponent(message)}` : base
+}
+
+/* Providers ----------------------------------------------------------- */
+
+export interface WhatsAppMessage {
+  /** Any phone format; normalised by the provider. */
+  to: string | null | undefined
+  text: string
+}
+
+/** What the browser does with a prepared message. */
+export type PreparedWhatsApp = { kind: "link"; url: string }
+
+/**
+ * How a WhatsApp reminder is delivered. Only "link" exists (CLAUDE.md: no
+ * WhatsApp API): it builds a wa.me URL on the server, before the click, and
+ * the admin presses Send in WhatsApp. An API provider could implement the
+ * same interface later.
+ */
+export interface WhatsAppProvider {
+  readonly kind: PreparedWhatsApp["kind"]
+  /** null when the number can't be used. */
+  prepare(message: WhatsAppMessage): PreparedWhatsApp | null
+}
+
+export const linkProvider: WhatsAppProvider = {
+  kind: "link",
+  prepare({ to, text }) {
+    const digits = normalisePhone(to)
+    return digits ? { kind: "link", url: buildWaLink(digits, text) } : null
+  },
 }

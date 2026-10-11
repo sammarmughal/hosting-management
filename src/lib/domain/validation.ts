@@ -17,6 +17,24 @@ export const PAYMENT_METHODS = [
 
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
+/** Form labels ⇄ the payments.method enum values (docs/03). */
+export const PAYMENT_METHOD_KEYS = {
+  Cash: "cash",
+  "Bank transfer": "bank_transfer",
+  JazzCash: "jazzcash",
+  Easypaisa: "easypaisa",
+  Other: "other",
+} as const satisfies Record<PaymentMethod, string>
+
+export type PaymentMethodKey = (typeof PAYMENT_METHOD_KEYS)[PaymentMethod]
+
+export function paymentMethodLabel(key: string): PaymentMethod {
+  const found = (Object.keys(PAYMENT_METHOD_KEYS) as PaymentMethod[]).find(
+    (label) => PAYMENT_METHOD_KEYS[label] === key
+  )
+  return found ?? "Other"
+}
+
 const AMOUNT_RE = /^\d{1,8}(\.\d{1,2})?$/
 
 /** "6,500" or "6500.50" → "6500.50"-style string. Must be > 0 and ≤ 99,999,999.99. */
@@ -56,8 +74,19 @@ export type RenewData = z.output<ReturnType<typeof renewSchema>>
 
 /* Clients and services (docs/04 §8) --------------------------------- */
 
-export const CURRENCIES = ["PKR", "USD", "AED", "GBP", "EUR"] as const
+export const CURRENCIES = ["PKR", "USD", "AED", "SAR", "GBP", "EUR"] as const
 export type Currency = (typeof CURRENCIES)[number]
+
+/**
+ * Currencies a service form offers: the ones enabled in settings, plus the
+ * service's current one if it has since been turned off (so editing keeps it).
+ */
+export function currencyOptions(
+  enabled: readonly Currency[],
+  current?: string
+): Currency[] {
+  return CURRENCIES.filter((c) => enabled.includes(c) || c === current)
+}
 
 const text = (max: number) =>
   z
@@ -90,6 +119,8 @@ export const clientSchema = z
         (v) => v === "" || normalisePhone(v) !== null,
         "Enter a valid number, like 0300 1234567"
       ),
+    /** Optional; printed under the client on invoices (Bill to). */
+    address: text(300).optional(),
     notes: text(2000),
   })
   .strict()
@@ -107,6 +138,7 @@ export const clientSchema = z
     company: c.company || null,
     email: c.email || null,
     phone: c.phone ? normalisePhone(c.phone) : null,
+    address: c.address || null,
     notes: c.notes || null,
   }))
 

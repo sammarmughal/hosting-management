@@ -1,5 +1,6 @@
 import {
   CalendarClockIcon,
+  FileTextIcon,
   FileUpIcon,
   LayoutDashboardIcon,
   ReceiptIcon,
@@ -18,6 +19,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
   { href: "/clients", label: "Clients", icon: UsersIcon },
   { href: "/reminders", label: "Reminders", icon: CalendarClockIcon },
+  { href: "/invoices", label: "Invoices", icon: FileTextIcon },
   { href: "/payments", label: "Payments", icon: ReceiptIcon },
   { href: "/import", label: "Import", icon: FileUpIcon },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
@@ -35,6 +37,7 @@ const TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
   "/clients": "Clients",
   "/reminders": "Reminders",
+  "/invoices": "Invoices",
   "/payments": "Payments",
   "/notifications": "Notifications",
   "/import": "Import",

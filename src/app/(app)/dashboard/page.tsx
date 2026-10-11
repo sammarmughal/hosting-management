@@ -5,24 +5,30 @@ import { CheckNow } from "@/components/dashboard/check-now"
 import { ReminderQueue } from "@/components/reminder-queue/reminder-queue"
 import { ServicesTable } from "@/components/services-table"
 import { MoneyValue, StatCard } from "@/components/stat-card"
-import { formatAmount, formatMoney } from "@/lib/domain/money"
+import { formatAmount } from "@/lib/domain/money"
 import { formatRelative } from "@/lib/domain/relative-time"
 import { getDashboard, getSettings } from "@/lib/data"
+import { runCheck } from "@/lib/server/reminders"
+import { requireAdmin } from "@/lib/server/session"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "Dashboard" }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
-// docs/06 §4.4. Phase 5 adds `await runCheck({ force: false })` before loading.
+// docs/06 §4.4. No cron (CLAUDE.md rule 1): opening the dashboard runs the
+// reminder check, throttled by check_interval_minutes, then loads the data.
 export default async function DashboardPage() {
+  await requireAdmin()
+  await runCheck({ force: false })
   const [data, settings] = await Promise.all([getDashboard(), getSettings()])
   const { stats, queue, dueSoon } = data
   const t = settings.thresholds
 
-  const currency = settings.defaultCurrency
-  const main = stats.expected30.find((e) => e.currency === currency)
-  const others = stats.expected30.filter((e) => e.currency !== currency)
+  // One line per currency, default first (never summed across currencies).
+  const expected = stats.expected30.length
+    ? stats.expected30
+    : [{ currency: settings.defaultCurrency, total: "0" }]
   const expiresToday = dueSoon.filter((s) => s.daysLeft === 0).length
   const oldestExpired = Math.min(0, ...dueSoon.map((s) => s.daysLeft))
 
@@ -94,12 +100,13 @@ export default async function DashboardPage() {
         <StatCard
           label="Expected in 30 days"
           value={
-            <MoneyValue currency={currency} amount={formatAmount(main?.total ?? "0")} />
-          }
-          sub={
-            others.length
-              ? `+ ${others.map((o) => formatMoney(o.total, o.currency)).join(" + ")}`
-              : undefined
+            <span className="flex flex-col">
+              {expected.map((e) => (
+                <span key={e.currency} className="truncate">
+                  <MoneyValue currency={e.currency} amount={formatAmount(e.total)} />
+                </span>
+              ))}
+            </span>
           }
           href="/clients?filter=soon"
           className={cn(SPAN_2, "col-span-2")}
@@ -107,6 +114,8 @@ export default async function DashboardPage() {
       </section>
 
       <ReminderQueue
+        // Remount with fresh rows after "Check now" refreshes the page.
+        key={data.lastCheckAt}
         initialItems={queue}
         adminEmail={data.adminEmail}
         adminSummaryWaLink={data.adminSummaryWaLink}

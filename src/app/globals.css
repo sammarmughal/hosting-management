@@ -397,7 +397,8 @@
     min-height: 44px;
     min-width: 44px;
   }
-  button:not([data-slot="checkbox"]):not([data-slot="switch"]) {
+  /* Checkboxes, switches and radios have their own enlarged hit area. */
+  button:not([data-slot="checkbox"]):not([data-slot="switch"]):not([data-slot="radio-group-item"]) {
     min-height: 44px;
     min-width: 44px;
   }

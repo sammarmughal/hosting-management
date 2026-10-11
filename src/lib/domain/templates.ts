@@ -61,7 +61,9 @@ export function renderTemplate(
   vars: TemplateVars,
   { mode, raw = ["summary_table"] }: RenderOptions
 ): string {
-  return template.replace(/\{(\w+)\}/g, (match, key: string) => {
+  // {name} (docs/08) and {{name}} (docs/13 §10) are both placeholders.
+  return template.replace(/\{\{(\w+)\}\}|\{(\w+)\}/g, (match, double?: string, single?: string) => {
+    const key = (double ?? single) as string
     if (!Object.hasOwn(vars, key)) return match
     const value = vars[key]
     const text = value === null || value === undefined ? "" : String(value)

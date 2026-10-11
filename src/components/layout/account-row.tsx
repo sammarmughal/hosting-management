@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { logoutAction } from "@/lib/mock/actions"
+import { logoutAction } from "@/actions/auth"
 import { cn } from "@/lib/utils"
 
 function LogoutButton({ side }: { side: "right" | "top" }) {

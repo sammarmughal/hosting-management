@@ -24,7 +24,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatDatePK } from "@/lib/domain/dates"
 import { formatMoney } from "@/lib/domain/money"
-import { deletePaymentAction } from "@/lib/mock/actions"
+import { deletePaymentAction } from "@/actions/payments"
 import { cn } from "@/lib/utils"
 import type { PaymentRow } from "@/types/view"
 

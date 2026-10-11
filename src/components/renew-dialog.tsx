@@ -36,14 +36,14 @@ import {
   todayPK,
   type ISODate,
 } from "@/lib/domain/dates"
-import { formatAmount } from "@/lib/domain/money"
+import { formatAmount, formatMoney } from "@/lib/domain/money"
 import {
   PAYMENT_METHODS,
   renewSchema,
   type RenewData,
   type RenewInput,
 } from "@/lib/domain/validation"
-import { renewServiceAction } from "@/lib/mock/actions"
+import { renewServiceAction } from "@/actions/payments"
 import type { ServiceRow } from "@/types/view"
 
 function daysLeftText(d: number) {
@@ -60,11 +60,14 @@ function daysLeftText(d: number) {
  */
 export function RenewDialog({
   service,
+  invoice,
   open,
   onOpenChange,
   onRenewed,
 }: {
   service: ServiceRow | null
+  /** Mark as paid (docs/13 §5): pre-fills the invoice total; renewing marks it paid. */
+  invoice?: { number: string; total: string; currency: string } | null
   open: boolean
   onOpenChange: (open: boolean) => void
   onRenewed?: (serviceId: number, newRenewalDate: ISODate) => void
@@ -76,6 +79,7 @@ export function RenewDialog({
           <RenewForm
             key={service.id}
             service={service}
+            invoice={invoice ?? null}
             onDone={(date) => {
               onRenewed?.(service.id, date)
               onOpenChange(false)
@@ -89,9 +93,11 @@ export function RenewDialog({
 
 function RenewForm({
   service,
+  invoice,
   onDone,
 }: {
   service: ServiceRow
+  invoice: { number: string; total: string; currency: string } | null
   onDone: (newRenewalDate: ISODate) => void
 }) {
   const today = React.useMemo(() => todayPK(), [])
@@ -107,7 +113,7 @@ function RenewForm({
     resolver: zodResolver(schema),
     defaultValues: {
       serviceId: service.id,
-      amount: formatAmount(service.chargeAmount),
+      amount: formatAmount(invoice?.total ?? service.chargeAmount),
       paidOn: today,
       method: "Bank transfer",
       reference: "",
@@ -149,6 +155,12 @@ function RenewForm({
       <DialogHeader>
         <DialogTitle>Renew {service.domain}</DialogTitle>
         <DialogDescription>
+          {invoice && (
+            <>
+              Invoice <span className="font-mono">{invoice.number}</span> ·{" "}
+              {formatMoney(invoice.total, invoice.currency)}.{" "}
+            </>
+          )}
           Current renewal date: {formatDatePK(service.renewalDate)} (
           {daysLeftText(service.daysLeft)})
         </DialogDescription>

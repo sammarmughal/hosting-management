@@ -13,6 +13,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
+// The CSP nonce (src/proxy.ts) only reaches pages rendered per request, so
+// nothing is prerendered at build time (docs/05 §7).
+export const dynamic = "force-dynamic"
+
 export const viewport: Viewport = {
   themeColor: "#f7f8fa",
   viewportFit: "cover",

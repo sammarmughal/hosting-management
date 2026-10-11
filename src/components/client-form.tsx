@@ -35,11 +35,11 @@ import { addOneYear, formatDatePK, isISODate, todayPK } from "@/lib/domain/dates
 import { normaliseDomain } from "@/lib/domain/hostname"
 import {
   clientSchema,
-  CURRENCIES,
   newClientSchema,
   serviceSchema,
   startDateWarning,
   type ClientInput,
+  type Currency,
   type NewClientInput,
   type ServiceInput,
 } from "@/lib/domain/validation"
@@ -49,7 +49,7 @@ import {
   createServiceAction,
   updateClientAction,
   updateServiceAction,
-} from "@/lib/mock/actions"
+} from "@/actions/clients"
 import { cn } from "@/lib/utils"
 import type { ActionResult } from "@/types/actions"
 
@@ -67,7 +67,7 @@ function looseResolver(resolver: unknown): Resolver<FieldValues> {
 /** Add client (client + first service) or edit client details (docs/06 §4.6). */
 export function ClientForm(
   props:
-    | { mode: "new"; defaultValues: NewClientInput }
+    | { mode: "new"; defaultValues: NewClientInput; currencies: readonly Currency[] }
     | { mode: "edit"; clientId: number; defaultValues: ClientInput }
 ) {
   const isNew = props.mode === "new"
@@ -97,12 +97,12 @@ export function ClientForm(
         >
           <ClientFields prefix={isNew ? "client." : ""} />
         </Section>
-        {isNew && (
+        {props.mode === "new" && (
           <Section
             title="Hosting service"
             description="The domain and its yearly renewal. You can add more services later."
           >
-            <ServiceFields prefix="service." />
+            <ServiceFields prefix="service." currencies={props.currencies} />
           </Section>
         )}
         <FormActions
@@ -116,9 +116,13 @@ export function ClientForm(
 
 /** Add or edit a single hosting service. */
 export function ServiceForm(
-  props:
+  props: (
     | { mode: "new"; clientId: number; defaultValues: ServiceInput }
     | { mode: "edit"; serviceId: number; clientId: number; defaultValues: ServiceInput }
+  ) & {
+    /** Enabled currencies (plus the service's current one), from currencyOptions(). */
+    currencies: readonly Currency[]
+  }
 ) {
   const form = useForm<FieldValues>({
     resolver: looseResolver(zodResolver(serviceSchema)),
@@ -142,7 +146,11 @@ export function ServiceForm(
           title="Hosting service"
           description="The domain and its yearly renewal. Renewal dates default to one year after the start."
         >
-          <ServiceFields prefix="" autoRenewal={props.mode === "new"} />
+          <ServiceFields
+            prefix=""
+            autoRenewal={props.mode === "new"}
+            currencies={props.currencies}
+          />
         </Section>
         <FormActions
           cancelHref={`/clients/${props.clientId}`}
@@ -236,6 +244,7 @@ function ClientFields({ prefix }: { prefix: string }) {
   const company = useField(prefix, "company")
   const email = useField(prefix, "email")
   const phone = useField(prefix, "phone")
+  const address = useField(prefix, "address")
   const notes = useField(prefix, "notes")
   const phoneValue = (useWatch({ control, name: phone.name }) as string | undefined) ?? ""
 
@@ -305,6 +314,22 @@ function ClientFields({ prefix }: { prefix: string }) {
         />
       </FormField>
       <FormField
+        id={address.id}
+        label="Address"
+        error={address.error}
+        help="Optional. Printed on invoices under the client’s name."
+        className="sm:col-span-2"
+      >
+        <Textarea
+          id={address.id}
+          rows={2}
+          placeholder="Street, area, city"
+          aria-invalid={!!address.error}
+          aria-describedby={fieldDescribedBy(address.id, { error: address.error, help: true })}
+          {...register(address.name)}
+        />
+      </FormField>
+      <FormField
         id={notes.id}
         label="Notes"
         error={notes.error}
@@ -349,9 +374,11 @@ function PhonePreview({ value }: { value: string }) {
 function ServiceFields({
   prefix,
   autoRenewal = true,
+  currencies,
 }: {
   prefix: string
   autoRenewal?: boolean
+  currencies: readonly Currency[]
 }) {
   const { register, control, setValue, getValues, formState } = useFormContext()
   const domain = useField(prefix, "domain")
@@ -528,7 +555,7 @@ function ServiceFields({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {CURRENCIES.map((c) => (
+                  {currencies.map((c) => (
                     <SelectItem key={c} value={c}>
                       {c}
                     </SelectItem>

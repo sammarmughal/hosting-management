@@ -4,8 +4,8 @@ import { notFound } from "next/navigation"
 import { ServiceForm } from "@/components/client-form"
 import { PageHeader } from "@/components/page-header"
 import { formatAmount } from "@/lib/domain/money"
-import type { Currency } from "@/lib/domain/validation"
-import { getService } from "@/lib/data"
+import { currencyOptions, type Currency } from "@/lib/domain/validation"
+import { getService, getSettings } from "@/lib/data"
 
 type Props = { params: Promise<{ id: string }> }
 
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function EditServicePage({ params }: Props) {
-  const s = await load(params)
+  const [s, settings] = await Promise.all([load(params), getSettings()])
   return (
     <>
       <PageHeader title="Edit service" description={`${s.domain} · ${s.clientName}`} />
@@ -29,6 +29,7 @@ export default async function EditServicePage({ params }: Props) {
         mode="edit"
         serviceId={s.id}
         clientId={s.clientId}
+        currencies={currencyOptions(settings.enabledCurrencies, s.currency)}
         defaultValues={{
           domain: s.domain,
           planLabel: s.planLabel ?? "",

@@ -31,11 +31,19 @@ import { stageLabel } from "@/lib/domain/stages"
 import {
   markOpenedAction,
   markSentAction,
+  sendEmailAndWhatsappAction,
   sendReminderEmailAction,
   skipReminderAction,
-} from "@/lib/mock/actions"
+} from "@/actions/reminders"
+import {
+  WhatsAppQueueDialog,
+  type WhatsAppStep,
+} from "@/components/reminder-queue/whatsapp-queue-dialog"
+import { openWhatsApp } from "@/lib/open-whatsapp"
+import { InvoiceChip } from "@/components/invoices/invoice-status-badge"
+import { useInvoiceDialogs } from "@/components/invoices/use-invoice-dialogs"
 import { cn } from "@/lib/utils"
-import type { Colour, QueueItem, ReminderRow } from "@/types/view"
+import type { Colour, InvoiceChip as InvoiceChipData, QueueItem, ReminderRow } from "@/types/view"
 
 const BAR: Record<Colour, string> = {
   green: "bg-green",
@@ -47,6 +55,29 @@ const BAR: Record<Colour, string> = {
 
 const OPEN: ReminderRow["status"][] = ["pending", "failed"]
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
+
+/** The email row can be sent now, or why not. */
+function emailChannel(item: QueueItem): { ready: true } | { ready: false; why: string } {
+  if (!item.service.email) return { ready: false, why: "no email address" }
+  const row = item.email
+  if (!row) return { ready: false, why: "no email queued" }
+  if (row.status === "sent") return { ready: false, why: "email already sent" }
+  if (!OPEN.includes(row.status)) return { ready: false, why: `email ${row.status}` }
+  return { ready: true }
+}
+
+/** The WhatsApp chat can be opened now (and its link), or why not. */
+function whatsappChannel(
+  item: QueueItem
+): { ready: true; url: string } | { ready: false; why: string } {
+  const row = item.whatsapp
+  const url = row?.waLink ?? item.service.waLink
+  if (!url) return { ready: false, why: "no valid WhatsApp number" }
+  if (row?.status === "sent") return { ready: false, why: "WhatsApp already sent" }
+  if (row?.status === "opened") return { ready: false, why: "WhatsApp already opened" }
+  if (row?.status === "skipped") return { ready: false, why: "WhatsApp skipped" }
+  return { ready: true, url }
+}
 
 /**
  * The reminder queue (docs/06 §4.4): one row per service with its email and
@@ -66,6 +97,8 @@ export function ReminderQueue({
   const [sending, setSending] = React.useState<ReadonlySet<string>>(new Set())
   const [busy, setBusy] = React.useState<ReadonlySet<string>>(new Set())
   const [sendOpen, setSendOpen] = React.useState(false)
+  const [waQueueOpen, setWaQueueOpen] = React.useState(false)
+  const invoiceDialogs = useInvoiceDialogs()
   const [renewing, setRenewing] = React.useState<QueueItem | null>(null)
   const [renewOpen, setRenewOpen] = React.useState(false)
 
@@ -125,6 +158,87 @@ export function ReminderQueue({
     })
   }
 
+  /**
+   * "Send email + WhatsApp": opens the chat right now (synchronously, so no
+   * pop-up blocker), sends the email in the background, one toast for both.
+   */
+  function sendBoth(item: QueueItem) {
+    const email = emailChannel(item)
+    const wa = whatsappChannel(item)
+    const waOpened = wa.ready ? openWhatsApp(wa.url) : false
+    const waRow = wa.ready && waOpened ? item.whatsapp : null
+    const emailRow = email.ready ? item.email : null
+    if (waRow) patchRow(waRow.id, { status: "opened", sentAt: new Date().toISOString() })
+    if (emailRow) setSending((s) => toggle(s, emailRow.id, true))
+    const name = item.service.clientName
+    const blocked = wa.ready && !waOpened
+    const blockedNote = "The browser blocked WhatsApp. Allow pop-ups for this site."
+
+    if (!emailRow && !waRow) {
+      if (blocked) toast.error(`Couldn't open WhatsApp for ${name}`, { description: blockedNote })
+      return
+    }
+    void attemptAction(() =>
+      sendEmailAndWhatsappAction({
+        emailId: emailRow?.id ?? null,
+        whatsappId: waRow?.id ?? null,
+      })
+    ).then((res) => {
+      if (emailRow) setSending((s) => toggle(s, emailRow.id, false))
+      if (!res.ok || !res.data) {
+        if (emailRow) patchRow(emailRow.id, { status: "failed", lastError: res.ok ? null : res.error })
+        toast.error(`Couldn't send the reminders for ${name}`, {
+          description: res.ok ? undefined : res.error,
+        })
+        return
+      }
+      const r = res.data.email
+      if (emailRow && r?.ok)
+        patchRow(emailRow.id, { status: "sent", sentAt: r.sentAt, lastError: null })
+      if (emailRow && r && !r.ok) patchRow(emailRow.id, { status: "failed", lastError: r.error })
+
+      const emailFailed = !!emailRow && !!r && !r.ok
+      const parts = [
+        emailRow ? (emailFailed ? null : "email sent") : null,
+        waRow ? "WhatsApp opened" : null,
+      ].filter(Boolean)
+      if (emailFailed || blocked) {
+        toast.error(
+          parts.length
+            ? `${parts.join(", ")} for ${name}, but ${emailFailed ? "the email failed" : "WhatsApp was blocked"}`.replace(/^./, (c) => c.toUpperCase())
+            : `Couldn't send the reminders for ${name}`,
+          { description: emailFailed && r && !r.ok ? r.error : blockedNote }
+        )
+      } else {
+        toast.success(
+          `${parts.join(" and ")} for ${name}`.replace(/^./, (c) => c.toUpperCase()),
+          waRow ? { description: "Press Send in WhatsApp, then Mark as sent." } : undefined
+        )
+      }
+    })
+  }
+
+  const waSteps: WhatsAppStep[] = items.flatMap((item) => {
+    const wa = whatsappChannel(item)
+    return wa.ready ? [{ item, url: wa.url }] : []
+  })
+
+  function openFromQueue(step: WhatsAppStep): boolean {
+    const ok = openWhatsApp(step.url)
+    const row = step.item.whatsapp
+    if (ok && row) openedWhatsApp(row)
+    return ok
+  }
+
+  async function markSentFromQueue(step: WhatsAppStep): Promise<boolean> {
+    const row = step.item.whatsapp
+    if (!row) return true
+    const res = await attemptAction(() => markSentAction(row.id))
+    if (res.ok) patchRow(row.id, { status: "sent", sentAt: new Date().toISOString() })
+    else toast.error(res.error)
+    return res.ok
+  }
+
   async function markSent(row: ReminderRow) {
     setBusy((s) => toggle(s, row.id, true))
     const res = await attemptAction(() => markSentAction(row.id))
@@ -181,10 +295,10 @@ export function ReminderQueue({
             {count}
           </Badge>
         </h2>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {recipients.length > 0 ? (
             <Button
-              className="flex-1 max-sm:h-11 sm:flex-none"
+              className="flex-1 max-sm:h-11 max-sm:basis-full sm:flex-none"
               onClick={() => setSendOpen(true)}
             >
               <SendIcon />
@@ -193,7 +307,10 @@ export function ReminderQueue({
           ) : (
             <Tooltip>
               <TooltipTrigger asChild>
-                <span tabIndex={0} className="inline-flex flex-1 rounded-md sm:flex-none">
+                <span
+                  tabIndex={0}
+                  className="inline-flex flex-1 rounded-md max-sm:basis-full sm:flex-none"
+                >
                   <Button disabled className="w-full max-sm:h-11">
                     <SendIcon />
                     Send emails
@@ -201,6 +318,29 @@ export function ReminderQueue({
                 </span>
               </TooltipTrigger>
               <TooltipContent>No emails waiting to be sent</TooltipContent>
+            </Tooltip>
+          )}
+          {waSteps.length > 0 ? (
+            <Button
+              variant="outline"
+              className="flex-1 max-sm:h-11 sm:flex-none"
+              onClick={() => setWaQueueOpen(true)}
+            >
+              <MessageCircleIcon />
+              WhatsApp queue
+              <span className="text-ink-muted tabular-nums">{waSteps.length}</span>
+            </Button>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="inline-flex flex-1 rounded-md sm:flex-none">
+                  <Button variant="outline" disabled className="w-full max-sm:h-11">
+                    <MessageCircleIcon />
+                    WhatsApp queue
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>No WhatsApp chats waiting to be opened</TooltipContent>
             </Tooltip>
           )}
           <AdminSummaryMenu
@@ -229,6 +369,8 @@ export function ReminderQueue({
               onOpenedWhatsApp={openedWhatsApp}
               onMarkSent={(row) => void markSent(row)}
               onSkip={() => skip(item)}
+              onSendBoth={() => sendBoth(item)}
+              onShareInvoice={invoiceDialogs.openShare}
               onRenew={() => {
                 setRenewing(item)
                 setRenewOpen(true)
@@ -254,6 +396,15 @@ export function ReminderQueue({
         }
       />
 
+      {invoiceDialogs.dialogs}
+      <WhatsAppQueueDialog
+        open={waQueueOpen}
+        onOpenChange={setWaQueueOpen}
+        steps={waSteps}
+        onOpen={openFromQueue}
+        onMarkSent={markSentFromQueue}
+      />
+
       <RenewDialog
         service={renewing?.service ?? null}
         open={renewOpen}
@@ -277,6 +428,8 @@ function QueueRow({
   onOpenedWhatsApp,
   onMarkSent,
   onSkip,
+  onSendBoth,
+  onShareInvoice,
   onRenew,
 }: {
   item: QueueItem
@@ -286,9 +439,32 @@ function QueueRow({
   onOpenedWhatsApp: (row: ReminderRow) => void
   onMarkSent: (row: ReminderRow) => void
   onSkip: () => void
+  onSendBoth: () => void
+  onShareInvoice: (invoice: InvoiceChipData) => void
   onRenew: () => void
 }) {
   const s = item.service
+  const email = emailChannel(item)
+  const wa = whatsappChannel(item)
+  // A channel that can't go out says why (docs/12 §8).
+  const reason = !email.ready && !wa.ready
+    ? `Nothing to send: ${email.why} and ${wa.why}`
+    : !email.ready
+      ? `Opens WhatsApp only: ${email.why}`
+      : !wa.ready
+        ? `Sends the email only: ${wa.why}`
+        : null
+  const sendBoth = (
+    <Button
+      size="sm"
+      className="w-full max-md:h-11 md:w-auto"
+      disabled={(!email.ready && !wa.ready) || emailSending}
+      onClick={onSendBoth}
+    >
+      <SendIcon />
+      Send email + WhatsApp
+    </Button>
+  )
 
   return (
     <li className="relative">
@@ -309,9 +485,10 @@ function QueueRow({
               </Link>
               <span className="text-ink-muted"> · {s.clientName}</span>
             </p>
-            <p className="mt-0.5 text-sm text-ink-muted">
-              Stage: {stageLabel(item.stage)}
-            </p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-sm text-ink-muted">Stage: {stageLabel(item.stage)}</p>
+              {s.invoice && <InvoiceChip invoice={s.invoice} />}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:shrink-0 lg:flex-nowrap">
             <TimerPill renewalDate={s.renewalDate} />
@@ -339,7 +516,29 @@ function QueueRow({
               onMarkSent={onMarkSent}
             />
           </Channel>
-          <div className="flex gap-2 md:ml-auto">
+          <div className="flex flex-wrap gap-2 md:ml-auto md:flex-nowrap">
+            {reason ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span tabIndex={0} className="inline-flex w-full rounded-md md:w-auto">
+                    {sendBoth}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">{reason}</TooltipContent>
+              </Tooltip>
+            ) : (
+              sendBoth
+            )}
+            {s.invoice && s.invoice.status !== "void" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex-1 max-md:h-11 md:flex-none"
+                onClick={() => onShareInvoice(s.invoice!)}
+              >
+                Share invoice
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"

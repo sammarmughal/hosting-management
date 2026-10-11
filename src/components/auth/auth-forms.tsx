@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { AuthHeading } from "@/components/auth-heading"
 import { FormField } from "@/components/form-field"
 import { InlineAlert } from "@/components/inline-alert"
@@ -15,13 +14,12 @@ import {
   verifyCodeAction,
   requestResetAction,
   resetPasswordAction,
-} from "@/lib/mock/auth-actions"
+} from "@/actions/auth"
 
 const linkClass =
   "inline-flex min-h-11 items-center justify-center text-sm text-brand-700 hover:underline"
 
 export function LoginForm() {
-  const router = useRouter()
   const [error, setError] = useState("")
   const [pending, start] = useTransition()
   return (
@@ -42,8 +40,8 @@ export function LoginForm() {
                 String(data.get("identifier")),
                 String(data.get("password"))
               )
-              if (!res.ok) setError(res.error)
-              else router.push("/2fa")
+              // On success the action redirects to /2fa or /2fa/setup.
+              if (res && !res.ok) setError(res.error)
             } catch {
               setError("Couldn’t sign in. Try again.")
             }
@@ -82,7 +80,6 @@ export function LoginForm() {
 }
 
 export function VerifyForm() {
-  const router = useRouter()
   const [recovery, setRecovery] = useState(false)
   const [code, setCode] = useState("")
   const [error, setError] = useState("")
@@ -104,8 +101,8 @@ export function VerifyForm() {
           start(async () => {
             try {
               const res = await verifyCodeAction(code.trim().toUpperCase(), recovery)
-              if (!res.ok) setError(res.error)
-              else router.push("/dashboard")
+              // On success the action redirects to the dashboard.
+              if (res && !res.ok) setError(res.error)
             } catch {
               setError("Couldn’t verify the code. Try again.")
             }

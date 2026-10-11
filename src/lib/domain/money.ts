@@ -41,3 +41,28 @@ export function formatMoney(amount: string, currency: string): string {
 export function sumAmounts(amounts: readonly string[]): string {
   return fromCents(amounts.reduce((sum, a) => sum + toCents(a), 0n))
 }
+
+export interface CurrencyTotal {
+  currency: string
+  total: string
+}
+
+/**
+ * One total per currency; different currencies are never added together.
+ * `first` (the default currency) leads, the rest follow alphabetically.
+ */
+export function totalsByCurrency(
+  rows: readonly { currency: string; amount: string }[],
+  first?: string
+): CurrencyTotal[] {
+  const groups = new Map<string, bigint>()
+  for (const r of rows)
+    groups.set(r.currency, (groups.get(r.currency) ?? 0n) + toCents(r.amount))
+  return [...groups]
+    .map(([currency, cents]) => ({ currency, total: fromCents(cents) }))
+    .sort(
+      (a, b) =>
+        Number(b.currency === first) - Number(a.currency === first) ||
+        a.currency.localeCompare(b.currency)
+    )
+}

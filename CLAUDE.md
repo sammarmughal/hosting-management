@@ -11,7 +11,7 @@ You are helping build **Hosting Renewal Manager**, a single-admin **Next.js** ap
 Next.js App Router · TypeScript strict · Tailwind + shadcn/ui + lucide-react · Prisma + PostgreSQL (Neon) · zod · react-hook-form · @node-rs/argon2 · otplib · qrcode · nodemailer · papaparse · sonner · Vitest · Playwright.
 
 ## Hard rules
-1. **No cron, no Vercel Cron, no background workers, no polling loops.** Reminder checks run only through `runCheck()` from the dashboard page or `checkNowAction`.
+1. **No background workers and no polling loops.** Reminder checks run only through `runCheck()`: from the dashboard page, `checkNowAction`, and the one **daily scheduled check** (`/api/cron/check`, Vercel Cron at 04:00 UTC or a Hostinger cron entry; added by owner decision on 11 Oct 2026). The route needs `Authorization: Bearer <CRON_SECRET>`. Don't add other scheduled jobs.
 2. **No WhatsApp API.** Only `https://wa.me/<digits>?text=<encodeURIComponent(msg)>` links.
 3. **Security** (`docs/05-SECURITY.md`):
    - **Every Server Action and route handler starts with `await requireAdmin()`** (the auth actions use the password-stage guard). The layout check alone is NOT enough.

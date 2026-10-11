@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { getLatestNotificationsAction, markAllReadAction } from "@/lib/mock/actions"
+import { getLatestNotificationsAction, markAllReadAction } from "@/actions/notifications"
 import type { NotificationItem } from "@/types/view"
 
 function CountBadge({ count }: { count: number }) {

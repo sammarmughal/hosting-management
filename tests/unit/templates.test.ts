@@ -109,3 +109,25 @@ describe("renderForDays", () => {
     expect(out).toBe("Action needed: bilaltraders.com hosting expired on 24 Sep 2026")
   })
 })
+
+describe("{{double}} placeholders (docs/13 §10)", () => {
+  const vars = {
+    invoice_number: "INV-2026-0012",
+    invoice_link: "https://renewals.example.pk/i/abc_DEF-123",
+    invoice_total: "PKR 8,750",
+    due_date: "27 Oct 2026",
+    client_name: "<Ali>",
+  }
+  it("fills {{name}} and {name} in the same template", () => {
+    expect(
+      renderTemplate("{{invoice_number}} for {client_name}: {{invoice_total}}, due {due_date}", vars, {
+        mode: "text",
+      })
+    ).toBe("INV-2026-0012 for <Ali>: PKR 8,750, due 27 Oct 2026")
+  })
+  it("escapes {{name}} values in HTML mode and leaves unknown ones alone", () => {
+    expect(renderTemplate("{{client_name}} {{nope}} {nope}", vars, { mode: "html" })).toBe(
+      "&lt;Ali&gt; {{nope}} {nope}"
+    )
+  })
+})

@@ -6,22 +6,24 @@ import {
   CalendarClockIcon,
   CalendarXIcon,
   CircleCheckIcon,
+  FileTextIcon,
   MailXIcon,
   type LucideIcon,
 } from "lucide-react"
 import Link from "next/link"
 
 import { RelativeTime } from "@/components/relative-time"
-import { markReadAction } from "@/lib/mock/actions"
+import { markReadAction } from "@/actions/notifications"
 import { cn } from "@/lib/utils"
 import type { NotificationItem } from "@/types/view"
 
 /** Muted line icons; status colour only where it means something (expired, failed). */
 const TYPE_ICON: Record<string, { icon: LucideIcon; className: string }> = {
-  reminder_due: { icon: CalendarClockIcon, className: "text-ink-subtle" },
+  expiring: { icon: CalendarClockIcon, className: "text-ink-subtle" },
   expired: { icon: CalendarXIcon, className: "text-expired-fg" },
   email_failed: { icon: MailXIcon, className: "text-red-fg" },
   renewed: { icon: CircleCheckIcon, className: "text-ink-subtle" },
+  invoice_created: { icon: FileTextIcon, className: "text-ink-subtle" },
 }
 
 /**

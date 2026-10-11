@@ -2,7 +2,12 @@
 // seed inserts these, and "Reset to default" in Settings restores them.
 
 export type TemplateKey =
-  "client_email" | "client_whatsapp" | "admin_email" | "admin_whatsapp"
+  | "client_email"
+  | "client_whatsapp"
+  | "admin_email"
+  | "admin_whatsapp"
+  | "invoice_email"
+  | "invoice_whatsapp"
 
 export interface MessageTemplate {
   subject?: string
@@ -80,5 +85,27 @@ Please renew as soon as possible to keep your website online.
 {summary_list}
 
 Open the dashboard to follow up.`,
+  },
+
+  // docs/13 §9–§10: the "Invoice" template, used by Share invoice.
+  invoice_email: {
+    subject: "Invoice {{invoice_number}} for {domain}",
+    body: `<p>Dear {client_name},</p>
+<p>Please find attached invoice <b>{{invoice_number}}</b> for the hosting renewal of <b>{domain}</b>.</p>
+<p>Amount due: <b>{{invoice_total}}</b><br>Due date: <b>{{due_date}}</b></p>
+<p>You can also view and download it online: <a href="{{invoice_link}}">{{invoice_link}}</a></p>
+<p>Regards,<br>{business_name}<br>{business_phone}</p>`,
+  },
+
+  invoice_whatsapp: {
+    body: `Assalam-o-Alaikum {client_name},
+
+Your invoice *{{invoice_number}}* for *{domain}* is ready.
+Amount: *{{invoice_total}}*
+Due date: *{{due_date}}*
+
+View or download: {{invoice_link}}
+
+– {business_name}`,
   },
 }

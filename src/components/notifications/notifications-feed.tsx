@@ -8,7 +8,7 @@ import { toast } from "sonner"
 
 import { NotificationRow } from "@/components/notification-row"
 import { Button } from "@/components/ui/button"
-import { markAllReadAction } from "@/lib/mock/actions"
+import { markAllReadAction } from "@/actions/notifications"
 import type { NotificationItem } from "@/types/view"
 
 export interface NotificationGroup {
@@ -17,10 +17,18 @@ export interface NotificationGroup {
   items: (NotificationItem & { initialTime: string })[]
 }
 
-/** Grouped notifications with Mark all read (docs/06 §4.11). */
-export function NotificationsFeed({ groups }: { groups: NotificationGroup[] }) {
+/** Grouped notifications with Mark all read (docs/06 §4.11), one page at a time. */
+export function NotificationsFeed({
+  groups,
+  unread,
+  pagination,
+}: {
+  groups: NotificationGroup[]
+  /** Unread across all pages (not just this one). */
+  unread: number
+  pagination?: React.ReactNode
+}) {
   const [marking, startMarking] = React.useTransition()
-  const unread = groups.reduce((n, g) => n + g.items.filter((i) => !i.isRead).length, 0)
 
   function markAll() {
     startMarking(async () => {
@@ -72,6 +80,7 @@ export function NotificationsFeed({ groups }: { groups: NotificationGroup[] }) {
           </ul>
         </section>
       ))}
+      {pagination}
     </div>
   )
 }

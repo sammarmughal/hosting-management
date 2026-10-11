@@ -10,7 +10,7 @@ import { ServiceCard } from "@/components/client-detail/service-card"
 import { FlashToast } from "@/components/flash-toast"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
-import { getClient } from "@/lib/data"
+import { getClient, listClientInvoices } from "@/lib/data"
 
 type Props = {
   params: Promise<{ id: string }>
@@ -29,7 +29,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 const FLASH: Record<string, string> = { client: "Client saved", service: "Service saved" }
-const TABS: ClientTab[] = ["payments", "log", "activity"]
+const TABS: ClientTab[] = ["payments", "invoices", "log", "activity"]
 
 // docs/06 §4.7
 export default async function ClientPage({ params, searchParams }: Props) {
@@ -37,6 +37,7 @@ export default async function ClientPage({ params, searchParams }: Props) {
     load(params),
     searchParams,
   ])
+  const invoices = await listClientInvoices(client.id)
   const saved = typeof sp.saved === "string" ? (FLASH[sp.saved] ?? null) : null
   const tab = TABS.find((t) => t === sp.tab) ?? "payments"
   const paymentsBy = (serviceId: number) =>
@@ -89,6 +90,7 @@ export default async function ClientPage({ params, searchParams }: Props) {
           <ClientTabs
             initialTab={tab}
             payments={payments}
+            invoices={invoices}
             reminders={reminders}
             activity={activity}
             multipleServices={client.services.length > 1}

@@ -1,4 +1,10 @@
-import { MailIcon, MessageCircleIcon, PhoneIcon, type LucideIcon } from "lucide-react"
+import {
+  MailIcon,
+  MapPinIcon,
+  MessageCircleIcon,
+  PhoneIcon,
+  type LucideIcon,
+} from "lucide-react"
 import Link from "next/link"
 
 import { buildWaLink, formatPhone } from "@/lib/domain/whatsapp"
@@ -56,6 +62,12 @@ export function ContactCard({ client }: { client: ClientDetail }) {
             <span className="text-ink-subtle">No valid WhatsApp number</span>
           )}
         </Row>
+        {/* Optional: nothing is shown when there's no address. */}
+        {client.address && (
+          <Row icon={MapPinIcon} label="Address" multiline>
+            <span className="whitespace-pre-line text-ink wrap-break-word">{client.address}</span>
+          </Row>
+        )}
       </ul>
       {client.notes && (
         <div className="mt-4 border-t border-border pt-4">
@@ -70,15 +82,24 @@ export function ContactCard({ client }: { client: ClientDetail }) {
 function Row({
   icon: Icon,
   label,
+  multiline = false,
   children,
 }: {
   icon: LucideIcon
   label: string
+  /** Top-aligned for text that wraps (the address). */
+  multiline?: boolean
   children: React.ReactNode
 }) {
   return (
-    <li className="flex min-h-10 items-center gap-3 text-base">
-      <Icon aria-hidden className="size-4 shrink-0 text-ink-subtle" />
+    <li
+      className={
+        multiline
+          ? "flex min-h-10 items-start gap-3 py-2 text-base"
+          : "flex min-h-10 items-center gap-3 text-base"
+      }
+    >
+      <Icon aria-hidden className={multiline ? "mt-1 size-4 shrink-0 text-ink-subtle" : "size-4 shrink-0 text-ink-subtle"} />
       <span className="sr-only">{label}:</span>
       <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
     </li>

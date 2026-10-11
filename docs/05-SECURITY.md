@@ -75,7 +75,7 @@ export async function requireAdmin(): Promise<{ admin: Admin; session: Session }
 | Failed TOTP/recovery per session | 5 (`sessions.totpFailures`) | Session deleted → /login |
 | Failed attempts per IP in 24 h | 20 | 24 h |
 
-- IP: from `x-forwarded-for` (first value), which Vercel and Hostinger's proxy set, falling back to `x-real-ip`.
+- IP: from the header named by `TRUSTED_IP_HEADER` (default `x-forwarded-for`, first value). Only trust a header your host's proxy sets itself; verify it after deploy (docs/11 §5).
 - Record every attempt. Add a fixed 300 ms delay on failure.
 - Email the admin after 10 failures in 1 hour ("Unusual login activity").
 

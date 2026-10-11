@@ -4,11 +4,13 @@ import * as React from "react"
 import { attemptAction } from "@/lib/attempt-action"
 import {
   BanIcon,
+  FilePlusIcon,
   MailIcon,
   MessageCircleIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RotateCcwIcon,
+  SendIcon,
   Trash2Icon,
 } from "lucide-react"
 import Link from "next/link"
@@ -29,11 +31,11 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatDatePK } from "@/lib/domain/dates"
 import { formatMoney } from "@/lib/domain/money"
-import {
-  deleteServiceAction,
-  sendManualEmailAction,
-  toggleCancelServiceAction,
-} from "@/lib/mock/actions"
+import { deleteServiceAction, toggleCancelServiceAction } from "@/actions/clients"
+import { createInvoiceNowAction } from "@/actions/invoices"
+import { sendManualEmailAction } from "@/actions/reminders"
+import { InvoiceChip } from "@/components/invoices/invoice-status-badge"
+import { useInvoiceDialogs } from "@/components/invoices/use-invoice-dialogs"
 import { cn } from "@/lib/utils"
 import type { ServiceRow } from "@/types/view"
 
@@ -51,7 +53,21 @@ export function ServiceCard({
   const [deleteOpen, setDeleteOpen] = React.useState(false)
   const [sending, setSending] = React.useState(false)
   const [toggling, setToggling] = React.useState(false)
+  const [creating, setCreating] = React.useState(false)
+  const { openShare, dialogs } = useInvoiceDialogs()
   const cancelled = s.status === "cancelled"
+
+  async function createInvoice() {
+    setCreating(true)
+    const res = await attemptAction(() => createInvoiceNowAction(s.id))
+    setCreating(false)
+    if (!res.ok || !res.data) return void toast.error(res.ok ? "Couldn’t create the invoice." : res.error)
+    toast.success(
+      res.data.created
+        ? `Invoice ${res.data.number} created for ${s.domain}`
+        : `${s.domain} already has invoice ${res.data.number} for this renewal`
+    )
+  }
 
   async function sendEmail() {
     setSending(true)
@@ -85,6 +101,7 @@ export function ServiceCard({
               {s.domain}
             </h3>
             <StatusBadge colour={s.colour} />
+            {s.invoice && <InvoiceChip invoice={s.invoice} />}
           </div>
           <p className="mt-1 text-sm text-ink-muted">
             {s.planLabel ?? "No plan set"}
@@ -177,6 +194,28 @@ export function ServiceCard({
                 </Button>
               )}
             </WithReason>
+            {s.invoice && s.invoice.status !== "void" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => openShare(s.invoice!)}
+                className="max-sm:h-11 max-sm:w-full"
+              >
+                <SendIcon />
+                Share invoice
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                loading={creating}
+                onClick={() => void createInvoice()}
+                className="max-sm:h-11 max-sm:w-full"
+              >
+                <FilePlusIcon />
+                Create invoice now
+              </Button>
+            )}
           </>
         )}
         <Button asChild variant="ghost" size="sm" className="text-ink-muted max-sm:h-11">
@@ -187,7 +226,13 @@ export function ServiceCard({
         </Button>
       </div>
 
-      <RenewDialog service={s} open={renewOpen} onOpenChange={setRenewOpen} />
+      <RenewDialog
+        service={s}
+        invoice={s.invoice && (s.invoice.status === "unpaid" || s.invoice.status === "sent" || s.invoice.status === "overdue") ? s.invoice : null}
+        open={renewOpen}
+        onOpenChange={setRenewOpen}
+      />
+      {dialogs}
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}

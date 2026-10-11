@@ -36,7 +36,45 @@ Review standard: `12-DESIGN-DIRECTION.md` §§9–10, with its spacing, type, ta
 - [x] Lint, typecheck, unit tests, browser tests and production build pass.
 - [x] No unexpected browser errors or hydration warnings.
 
-The QR placeholder and mock authentication, SMTP and persistence are existing prototype boundaries, not production integrations. Documentation examples and parser test fixtures are distinguished from rendered UI when scanning content. The component styleguide intentionally demonstrates different type/button variants.
+~~The QR placeholder and mock authentication, SMTP and persistence are existing prototype boundaries, not production integrations.~~ Superseded: authentication, 2FA with a real QR code, SMTP and the database are now real (October 2026). Documentation examples and parser test fixtures are distinguished from rendered UI when scanning content. The component styleguide intentionally demonstrates different type/button variants (and is disabled in production builds).
+
+---
+
+## Owner walkthrough: one month with invoices (10 Oct – 21 Nov 2026)
+
+Method: the production build against the seeded database, plus a development server restarted at `FAKE_TODAY` = 12 Oct, 25 Oct, 4 Nov and 21 Nov to live through a month as the owner. Added a PKR client (Hamza Khalid, khalidprinting.pk, PKR 7,800) and a USD client (Faisal Rauf, raufexports.com, USD 120, UAE number), ran the check, received both invoices as they entered the 30-day window, shared one by email (PDF attached, caught by a local SMTP server) and one by WhatsApp, opened the public link on a 390 px phone, downloaded the PDF, marked the PKR invoice paid, and let the USD one go overdue. Screenshots: `screenshots/month/`, `screenshots/invoices/`, `screenshots/share/`. Every screen captured at 390 and 1440 px and opened for review against `12-DESIGN-DIRECTION.md` §10.
+
+### Problems → fixes
+
+- [x] Invoice list (390 px) → cards collapsed into one squashed row: the global mobile rule turns every un-slotted link in `main` into `inline-flex` → the card link opts out with `data-slot`.
+- [x] Share dialog (390 px), Renew dialog → radio buttons rendered as 44 px circles: the mobile touch-target rule enlarged every `<button>`, including Radix radios → radios excluded like checkboxes and switches (their hit area is already enlarged).
+- [x] Invoices totals strip (390 px) → three figures wrapped into an awkward bordered grid → stacked with horizontal dividers on phones.
+- [x] Invoice preview → the rule above Total had a gap between label and amount (borders on two grid cells) → one row, one rule.
+- [x] Invoice detail header (390 px) → "client · domain" wrapped to a dangling "· domain" → domain first.
+- [x] Invoice PDF → the "Invoice" title overlapped the invoice number (line box too short) → explicit line heights.
+- [x] Invoice PDF → a long bill-to name ran under the "Paid on" stamp → bill-to block limited to 62 % width so it wraps.
+- [x] Invoice PDF → wrapped descriptions ended on a dangling "·" ("almadinaexports.com ·") → comma before the plan.
+- [x] Invoice PDF → logo centred in its box instead of aligned with the text below → left-aligned.
+- [x] Public invoice (390 px) → payment instructions broke mid-word ("Rehman Web Servic / es", IBAN split) → label above value on phones, wrapping only between words.
+- [x] Public invoice (390 px) → "Invoice from Rehman Web Servic…" truncated → wraps.
+- [x] Dashboard → "Check now" said "11 new reminders" but not that it had also created an invoice → the toast adds "· 1 new invoice".
+- [x] Admin WhatsApp summary → emoji status markers had come back with the invoice work (regression of the fix above) → status words again ("Urgent:", "Expiring:", "Expired:").
+- [x] Reminder queue → sharing an invoice by WhatsApp added a second queue item for the same service (the share was logged as a new reminder row at today's stage) → the share updates the cycle's existing reminder row.
+- [x] Settings → save buttons read "Save invoice whatsapp" / "Save client whatsapp" (whole title lower-cased) → only the first letter.
+- [x] Build output → `next build` copied the local `.env` (database password, APP_KEY) into `.next/standalone`, which docs/11 §3 says to zip and upload → `postbuild` removes it; `npm start` loads `./.env` instead.
+
+### Observed, not changed (need a decision, see the hand-over summary)
+
+- [ ] Notifications page lists up to 200 items with no paging (docs/07 says "paginated list"); a month produced 53 unread, mostly stage notifications.
+- [ ] International numbers show unformatted on invoices and the client card (`+971501234567`); only Pakistani numbers are spaced.
+- [ ] "Paid on" in the Renew dialog defaults to the browser's date (correct in real use; only differs under `FAKE_TODAY`).
+- [ ] Invoices created before Settings → Invoices is filled in keep the old seller snapshot (no logo or payment details) by design (docs/13 §2). "Update from service" refreshes amounts only.
+
+### Verification
+
+- [x] Playwright e2e (docs/13 §12) passes against the standalone production build.
+- [x] No console errors, CSP violations, hydration warnings or horizontal scroll on any captured page.
+- [x] Lint, typecheck, unit + integration tests and production build pass.
 
 ## Final evidence and coverage
 

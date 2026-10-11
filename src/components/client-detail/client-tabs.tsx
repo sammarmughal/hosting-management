@@ -5,6 +5,7 @@ import {
   BanIcon,
   CircleCheckIcon,
   CircleXIcon,
+  FileTextIcon,
   MailIcon,
   MessageCircleIcon,
   ServerIcon,
@@ -12,26 +13,29 @@ import {
 } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 
+import { InvoicesTable } from "@/components/invoices/invoices-table"
 import { PaymentsTable } from "@/components/payments-table"
 import { ReminderLogTable } from "@/components/reminder-log-table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDatePK, todayPK } from "@/lib/domain/dates"
 import { formatDateTimePK } from "@/lib/domain/relative-time"
 import { cn } from "@/lib/utils"
-import type { ActivityItem, PaymentRow, ReminderRow } from "@/types/view"
+import type { ActivityItem, InvoiceRow, PaymentRow, ReminderRow } from "@/types/view"
 
-export type ClientTab = "payments" | "log" | "activity"
+export type ClientTab = "payments" | "invoices" | "log" | "activity"
 
-/** Payments | Reminder log | Activity (docs/06 §4.7). The tab lives in ?tab=. */
+/** Payments | Invoices | Reminder log | Activity (docs/06 §4.7, docs/13 §11). The tab lives in ?tab=. */
 export function ClientTabs({
   initialTab,
   payments,
+  invoices,
   reminders,
   activity,
   multipleServices,
 }: {
   initialTab: ClientTab
   payments: PaymentRow[]
+  invoices: InvoiceRow[]
   reminders: ReminderRow[]
   activity: ActivityItem[]
   multipleServices: boolean
@@ -55,6 +59,9 @@ export function ClientTabs({
           <TabsTrigger value="payments" className="px-2">
             Payments <Count n={payments.length} />
           </TabsTrigger>
+          <TabsTrigger value="invoices" className="px-2">
+            Invoices <Count n={invoices.length} />
+          </TabsTrigger>
           <TabsTrigger value="log" className="px-2">
             Reminder log <Count n={reminders.length} />
           </TabsTrigger>
@@ -70,6 +77,14 @@ export function ClientTabs({
           emptyText="No payments recorded yet. Use Renew / Mark paid when a client pays."
         >
           <PaymentsTable rows={payments} showDomain={multipleServices} />
+        </Panel>
+      </TabsContent>
+      <TabsContent value="invoices" className="pt-4">
+        <Panel
+          empty={invoices.length === 0}
+          emptyText="No invoices yet. They’re created before each renewal, or with Create invoice now on a service."
+        >
+          <InvoicesTable rows={invoices} showClient={false} />
         </Panel>
       </TabsContent>
       <TabsContent value="log" className="pt-4">
@@ -125,6 +140,7 @@ const ACTIVITY_ICON: Record<
   whatsapp: { icon: MessageCircleIcon, className: "text-ink-muted" },
   failed: { icon: CircleXIcon, className: "text-red-fg" },
   skipped: { icon: BanIcon, className: "text-ink-subtle" },
+  invoice: { icon: FileTextIcon, className: "text-ink-muted" },
 }
 
 /** Services and payments have a date only; reminders have a time. */

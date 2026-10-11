@@ -1,0 +1,354 @@
+// docs/03-DATABASE.md §2. Prisma 7: the connection URLs live in
+// prisma.config.ts (migrations) and src/lib/server/db.ts (runtime adapter),
+// not in this file. The models are unchanged from the docs.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  runtime  = "nodejs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────── Auth ───────────────────────────
+model Admin {
+  id              Int       @id @default(autoincrement())
+  username        String    @unique @db.VarChar(50)
+  email           String    @unique @db.VarChar(190)
+  passwordHash    String    @map("password_hash")
+  totpSecretEnc   String?   @map("totp_secret_enc")          // AES-256-GCM, base64
+  totpEnabled     Boolean   @default(false) @map("totp_enabled")
+  totpLastStep    Int?      @map("totp_last_step")           // blocks code replay
+  recoveryCodes   Json?     @map("recovery_codes")           // string[] of argon2 hashes
+  lastLoginAt     DateTime? @map("last_login_at") @db.Timestamptz
+  lastLoginIp     String?   @map("last_login_ip") @db.VarChar(45)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  sessions        Session[]
+  passwordResets  PasswordReset[]
+  @@map("admins")
+}
+
+enum SessionStage {
+  password_ok
+  full
+}
+
+model Session {
+  id          String       @id                         // sha256(cookie token), hex
+  adminId     Int          @map("admin_id")
+  stage       SessionStage
+  userAgent   String?      @map("user_agent") @db.VarChar(300)
+  ip          String?      @db.VarChar(45)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  lastSeenAt  DateTime     @default(now()) @map("last_seen_at") @db.Timestamptz
+  expiresAt   DateTime     @map("expires_at") @db.Timestamptz   // absolute limit
+  pendingTotpSecretEnc String? @map("pending_totp_secret_enc") // during 2FA setup only
+  totpFailures Int         @default(0) @map("totp_failures")
+  admin       Admin        @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  @@index([adminId])
+  @@map("sessions")
+}
+
+enum AttemptStep {
+  password
+  totp
+  recovery
+  reset
+}
+
+model LoginAttempt {
+  id          BigInt      @id @default(autoincrement())
+  ip          String      @db.VarChar(45)
+  identifier  String      @db.VarChar(190)
+  step        AttemptStep @default(password)
+  success     Boolean
+  attemptedAt DateTime    @default(now()) @map("attempted_at") @db.Timestamptz
+  @@index([ip, attemptedAt])
+  @@index([identifier, attemptedAt])
+  @@map("login_attempts")
+}
+
+model PasswordReset {
+  id         Int       @id @default(autoincrement())
+  adminId    Int       @map("admin_id")
+  tokenHash  String    @unique @map("token_hash") @db.Char(64)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  usedAt     DateTime? @map("used_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  admin      Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  @@map("password_resets")
+}
+
+// ─────────────────────────── Core data ───────────────────────────
+model Client {
+  id         Int       @id @default(autoincrement())
+  name       String    @db.VarChar(150)
+  company    String?   @db.VarChar(150)
+  email      String?   @db.VarChar(190)
+  phone      String?   @db.VarChar(20)                 // normalised digits: 923001234567
+  address    String?   @db.VarChar(300)                // optional; printed on invoices (Bill to)
+  notes      String?
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  services   Service[]
+  invoices   Invoice[]
+  @@index([name])
+  @@index([email])
+  @@index([phone])
+  @@map("clients")
+}
+
+enum ServiceStatus {
+  active
+  cancelled
+}
+
+model Service {
+  id               Int           @id @default(autoincrement())
+  clientId         Int           @map("client_id")
+  domain           String        @db.VarChar(190)
+  planLabel        String?       @map("plan_label") @db.VarChar(100)
+  startDate        DateTime      @map("start_date") @db.Date
+  renewalDate      DateTime      @map("renewal_date") @db.Date   // end of current period (inclusive)
+  chargeAmount     Decimal       @default(0) @map("charge_amount") @db.Decimal(12, 2)
+  currency         String        @default("PKR") @db.Char(3)
+  status           ServiceStatus @default(active)
+  remindersEnabled Boolean       @default(true) @map("reminders_enabled")
+  notes            String?
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  client           Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  payments         Payment[]
+  reminders        Reminder[]
+  notifications    Notification[]
+  invoices         Invoice[]
+  @@index([status, renewalDate])
+  @@index([domain])
+  @@map("services")
+}
+
+enum PaymentMethod {
+  cash
+  bank_transfer
+  jazzcash
+  easypaisa
+  other
+}
+
+model Payment {
+  id          Int           @id @default(autoincrement())
+  serviceId   Int           @map("service_id")
+  amount      Decimal       @db.Decimal(12, 2)
+  currency    String        @default("PKR") @db.Char(3)
+  paidOn      DateTime      @map("paid_on") @db.Date
+  method      PaymentMethod @default(cash)
+  reference   String?       @db.VarChar(100)
+  periodFrom  DateTime      @map("period_from") @db.Date
+  periodTo    DateTime      @map("period_to") @db.Date
+  notes       String?
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  service     Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  invoice     Invoice?
+  @@index([serviceId, paidOn])
+  @@map("payments")
+}
+
+// ─────────────────────────── Reminders ───────────────────────────
+enum ReminderChannel {
+  email
+  whatsapp
+}
+enum ReminderRecipient {
+  client
+  admin
+}
+enum ReminderStatus {
+  pending
+  sent
+  opened
+  failed
+  skipped
+}
+
+model Reminder {
+  id         BigInt            @id @default(autoincrement())
+  serviceId  Int               @map("service_id")
+  cycleDate  DateTime          @map("cycle_date") @db.Date   // service.renewalDate when queued
+  stage      Int               @db.SmallInt                  // 30,15,7,3,1,0,-3,-6,-9
+  channel    ReminderChannel
+  recipient  ReminderRecipient
+  status     ReminderStatus    @default(pending)
+  attempts   Int               @default(0) @db.SmallInt
+  lastError  String?           @map("last_error") @db.VarChar(500)
+  sentAt     DateTime?         @map("sent_at") @db.Timestamptz
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  service    Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  @@unique([serviceId, cycleDate, stage, channel, recipient], name: "uq_reminder")
+  @@index([status, createdAt])
+  @@map("reminders")
+}
+// Admin reminders are sent as ONE summary (email/WhatsApp) covering all queued services;
+// the per-service 'admin' rows record what the summary included and are marked sent together.
+
+enum NotificationType {
+  expiring
+  expired
+  renewed
+  email_failed
+  system
+  invoice_created
+}
+
+model Notification {
+  id         BigInt           @id @default(autoincrement())
+  serviceId  Int?             @map("service_id")
+  type       NotificationType
+  title      String           @db.VarChar(190)
+  body       String?          @db.VarChar(500)
+  dedupeKey  String           @unique @map("dedupe_key") @db.VarChar(120)  // "stage:12:2026-10-12:7"
+  isRead     Boolean          @default(false) @map("is_read")
+  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  service    Service?         @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  @@index([isRead, createdAt])
+  @@map("notifications")
+}
+
+// ─────────────────────────── Config ───────────────────────────
+model Setting {
+  key        String   @id @db.VarChar(80)
+  value      String?
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  @@map("settings")
+}
+
+model MessageTemplate {
+  key        String   @id @db.VarChar(50)   // client_email | client_whatsapp | admin_email | admin_whatsapp
+  subject    String?  @db.VarChar(190)
+  body       String
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  @@map("message_templates")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  action    String   @db.VarChar(50)        // login.success, client.create, service.renew, …
+  entity    String?  @db.VarChar(30)
+  entityId  Int?     @map("entity_id")
+  details   Json?
+  ip        String?  @db.VarChar(45)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  @@index([action, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_log")
+}
+
+// ─────────────────────────── Invoices (docs/13 §2–§3, §8) ───────────────────────────
+enum InvoiceStatus {
+  issued
+  sent
+  paid
+  void
+}
+
+// Overdue is derived (dueDate passed and not paid), never stored.
+model Invoice {
+  id                   Int           @id @default(autoincrement())
+  number               String        @unique @db.VarChar(40)       // INV-2026-0012
+  clientId             Int           @map("client_id")
+  serviceId            Int           @map("service_id")
+  periodStart          DateTime      @map("period_start") @db.Date  // the renewal date of the cycle
+  periodEnd            DateTime      @map("period_end") @db.Date    // periodStart + 1 year
+  issueDate            DateTime      @map("issue_date") @db.Date
+  dueDate              DateTime      @map("due_date") @db.Date      // = renewal date
+  currency             String        @db.Char(3)
+  subtotal             Decimal       @db.Decimal(12, 2)
+  discount             Decimal       @default(0) @db.Decimal(12, 2)
+  taxRate              Decimal       @default(0) @map("tax_rate") @db.Decimal(5, 2) // percent
+  taxAmount            Decimal       @default(0) @map("tax_amount") @db.Decimal(12, 2)
+  total                Decimal       @db.Decimal(12, 2)
+  status               InvoiceStatus @default(issued)
+  billTo               Json          @map("bill_to")   // snapshot at issue time
+  seller               Json                            // snapshot at issue time
+  notes                String?
+  publicToken          String        @unique @map("public_token") @db.VarChar(64)
+  publicTokenRevokedAt DateTime?     @map("public_token_revoked_at") @db.Timestamptz
+  firstSentAt          DateTime?     @map("first_sent_at") @db.Timestamptz
+  paidAt               DateTime?     @map("paid_at") @db.Date
+  paymentId            Int?          @unique @map("payment_id")
+  voidedAt             DateTime?     @map("voided_at") @db.Timestamptz
+  voidReason           String?       @map("void_reason") @db.VarChar(300)
+  createdAt            DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  client               Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  service              Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  payment              Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  items                InvoiceItem[]
+  events               InvoiceEvent[]
+  @@unique([serviceId, periodStart], name: "uq_invoice_cycle")
+  @@index([status, dueDate])
+  @@index([clientId])
+  @@index([issueDate])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          Int     @id @default(autoincrement())
+  invoiceId   Int     @map("invoice_id")
+  position    Int     @default(0)
+  description String  @db.VarChar(300)   // "Hosting renewal — noordental.pk"
+  periodLabel String  @map("period_label") @db.VarChar(100) // "30 Sep 2026 → 30 Sep 2027"
+  quantity    Int     @default(1)
+  unitAmount  Decimal @map("unit_amount") @db.Decimal(12, 2)
+  amount      Decimal @db.Decimal(12, 2)
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+enum InvoiceEventType {
+  created
+  updated
+  email_sent
+  email_failed
+  whatsapp_opened
+  whatsapp_marked_sent
+  link_viewed
+  pdf_downloaded
+  paid
+  voided
+  link_regenerated
+  details_refreshed
+}
+
+model InvoiceEvent {
+  id        BigInt           @id @default(autoincrement())
+  invoiceId Int              @map("invoice_id")
+  type      InvoiceEventType
+  details   Json?
+  ip        String?          @db.VarChar(45)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  invoice   Invoice          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  @@index([invoiceId, createdAt])
+  @@map("invoice_events")
+}
+
+// One row per year; the next sequence number is taken inside a transaction.
+model InvoiceCounter {
+  year      Int      @id
+  next      Int      @default(1)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  @@map("invoice_counters")
+}
+
+// Fixed-window counters for public routes (/i/*), DB-backed like login throttling.
+model RateLimit {
+  key         String   @db.VarChar(120)
+  windowStart DateTime @map("window_start") @db.Timestamptz
+  count       Int      @default(0)
+  @@id([key, windowStart])
+  @@map("rate_limits")
+}

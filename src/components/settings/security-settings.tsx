@@ -28,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { securityAction } from "@/lib/mock/settings-actions"
+import { securityAction } from "@/actions/settings"
 import { formatDateTimePK } from "@/lib/domain/relative-time"
 
 type Kind = "recovery" | "reset" | "sessions"

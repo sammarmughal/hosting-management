@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import { SettingsPanel } from "@/components/settings/settings-panel"
-import { getPreferences, getRecentLogins } from "@/lib/data"
+import { countInvoices, getPreferences, getRecentLogins } from "@/lib/data"
 import { todayPK } from "@/lib/domain/dates"
 export const metadata: Metadata = { title: "Settings" }
 export default async function SettingsPage({
@@ -8,10 +8,11 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ tab?: string }>
 }) {
-  const [initial, params, logins] = await Promise.all([
+  const [initial, params, logins, invoiceCount] = await Promise.all([
     getPreferences(),
     searchParams,
     getRecentLogins(),
+    countInvoices(),
   ])
   return (
     <SettingsPanel
@@ -19,6 +20,7 @@ export default async function SettingsPage({
       tab={params.tab ?? "business"}
       today={todayPK()}
       logins={logins}
+      invoiceCount={invoiceCount}
     />
   )
 }

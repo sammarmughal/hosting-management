@@ -15,7 +15,7 @@ import {
 import {
   adminSummaryWhatsappAction,
   sendAdminSummaryEmailAction,
-} from "@/lib/mock/actions"
+} from "@/actions/reminders"
 
 /** "Admin summary ▾": email it to the admin, or open WhatsApp to the admin's own number. */
 export function AdminSummaryMenu({

@@ -6,20 +6,29 @@ import {
   NotificationsFeed,
   type NotificationGroup,
 } from "@/components/notifications/notifications-feed"
+import { Pagination } from "@/components/pagination"
 import { addDays, formatDatePK, todayPK } from "@/lib/domain/dates"
 import { formatRelative } from "@/lib/domain/relative-time"
-import { listNotifications } from "@/lib/data"
+import { listNotificationsPage } from "@/lib/data"
+import { hrefWith } from "@/lib/url"
 
 export const metadata: Metadata = { title: "Notifications" }
 
-// docs/06 §4.11: grouped by Pakistan calendar day, newest first.
-export default async function NotificationsPage() {
-  const { items } = await listNotifications()
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> }
+
+// docs/06 §4.11 and docs/07 §1: grouped by Pakistan calendar day, newest
+// first, 25 per page.
+export default async function NotificationsPage({ searchParams }: Props) {
+  const sp = await searchParams
+  const requested = Number.parseInt(String(sp.page ?? "1"), 10)
+  const { items, unread, total, page, pageSize } = await listNotificationsPage(
+    Number.isInteger(requested) && requested > 0 ? requested : 1
+  )
   const now = new Date()
   const today = todayPK(now)
   const yesterday = addDays(today, -1)
 
-  if (items.length === 0) {
+  if (total === 0) {
     return (
       <div className="rounded-lg border border-border bg-surface">
         <EmptyState
@@ -40,5 +49,22 @@ export default async function NotificationsPage() {
     group.items.push({ ...item, initialTime: formatRelative(item.createdAt, now) })
   }
 
-  return <NotificationsFeed groups={groups} />
+  return (
+    <NotificationsFeed
+      groups={groups}
+      unread={unread}
+      pagination={
+        total > pageSize ? (
+          <div className="overflow-hidden rounded-lg border border-border bg-surface [&>div]:border-t-0">
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              hrefFor={(p) => hrefWith("/notifications", sp, { page: p })}
+            />
+          </div>
+        ) : null
+      }
+    />
+  )
 }

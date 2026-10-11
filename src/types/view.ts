@@ -1,6 +1,11 @@
 // View-model types (docs/06 §7.1). The mock layer builds these in Phase 1
 // and the Prisma layer builds them later, so components never change.
 import type { ISODate } from "@/lib/domain/dates"
+import type {
+  BillToSnapshot,
+  InvoiceDisplayStatus,
+  SellerSnapshot,
+} from "@/lib/domain/invoices"
 
 export type { ISODate }
 
@@ -13,6 +18,8 @@ export interface ServiceRow {
   company?: string | null
   email?: string | null
   phone?: string | null // phone = normalised digits
+  /** Client address (optional). */
+  address?: string | null
   domain: string
   planLabel?: string | null
   startDate: ISODate
@@ -27,6 +34,89 @@ export interface ServiceRow {
   waLink?: string | null
   /** Added in Phase 1: service notes (for the edit form). */
   notes?: string | null
+  /** docs/13 §11: the invoice for the current cycle, if one exists. */
+  invoice?: InvoiceChip | null
+}
+
+/* Invoices (docs/13) --------------------------------------------------- */
+
+export type { InvoiceDisplayStatus }
+
+/** "INV-2026-0012 · Unpaid" on service cards and queue rows. */
+export interface InvoiceChip {
+  id: number
+  number: string
+  status: InvoiceDisplayStatus
+  total: string
+  currency: string
+}
+
+export interface InvoiceRow {
+  id: number
+  number: string
+  clientId: number
+  clientName: string
+  company?: string | null
+  email?: string | null
+  serviceId: number
+  domain: string
+  issueDate: ISODate
+  dueDate: ISODate
+  total: string
+  currency: string
+  status: InvoiceDisplayStatus
+  /** The stored status (issued/sent/paid/void). */
+  rawStatus: "issued" | "sent" | "paid" | "void"
+  publicUrl: string
+}
+
+export interface InvoiceLineItem {
+  id: number
+  description: string
+  periodLabel: string
+  quantity: number
+  unitAmount: string
+  amount: string
+}
+
+export interface InvoiceEventItem {
+  id: string
+  type: string
+  /** ISO timestamp */
+  at: string
+  text: string
+  detail?: string | null
+}
+
+export interface InvoiceDocumentData {
+  number: string
+  status: InvoiceDisplayStatus
+  issueDate: ISODate
+  dueDate: ISODate
+  periodStart: ISODate
+  periodEnd: ISODate
+  currency: string
+  subtotal: string
+  discount: string
+  taxRate: string
+  taxAmount: string
+  total: string
+  items: InvoiceLineItem[]
+  billTo: BillToSnapshot
+  seller: SellerSnapshot
+  notes?: string | null
+  paidAt?: ISODate | null
+}
+
+export interface InvoiceDetail extends InvoiceDocumentData {
+  id: number
+  rawStatus: InvoiceRow["rawStatus"]
+  publicUrl: string
+  service: ServiceRow
+  firstSentAt?: string | null
+  voidedAt?: string | null
+  voidReason?: string | null
+  events: InvoiceEventItem[]
 }
 
 export interface ReminderRow {
@@ -59,6 +149,7 @@ export interface ClientDetail {
   company?: string | null
   email?: string | null
   phone?: string | null // normalised digits
+  address?: string | null
   notes?: string | null
   services: ServiceRow[]
 }
@@ -76,7 +167,7 @@ export interface ActivityItem {
   id: string
   /** ISO timestamp */
   at: string
-  kind: "service" | "payment" | "email" | "whatsapp" | "failed" | "skipped"
+  kind: "service" | "payment" | "email" | "whatsapp" | "failed" | "skipped" | "invoice"
   text: string
 }
 
@@ -109,4 +200,26 @@ export interface PaymentRow {
   reference?: string | null
   periodFrom: ISODate
   periodTo: ISODate
+}
+
+/** The Share invoice dialog's data (docs/13 §9). */
+export interface ShareData {
+  invoiceId: number
+  number: string
+  rawStatus: "issued" | "sent" | "paid" | "void"
+  clientId: number
+  clientName: string
+  /** From the client record now (not the invoice snapshot). */
+  email: string | null
+  /** Normalised digits, or null when missing or invalid. */
+  phone: string | null
+  /** Why each channel can't be used, or null. */
+  emailUnavailable: string | null
+  whatsappUnavailable: string | null
+  emailSubject: string
+  /** The email body as plain text, editable for this send only. */
+  emailText: string
+  whatsappText: string
+  publicUrl: string
+  service: ServiceRow
 }

@@ -1,7 +1,8 @@
 import { toCsv } from "@/lib/domain/csv"
 import { todayPK } from "@/lib/domain/dates"
 import { exportServices } from "@/lib/data"
-import { requireAdmin } from "@/lib/mock/auth"
+import { audit } from "@/lib/server/audit"
+import { requireAdmin } from "@/lib/server/session"
 import type { ServiceRow } from "@/types/view"
 
 export const runtime = "nodejs"
@@ -17,6 +18,7 @@ const COLUMNS: {
   { header: "email", value: (s) => s.email },
   // Digits only: a leading "+" would get the formula-guard ' prefix.
   { header: "phone", value: (s) => s.phone },
+  { header: "address", value: (s) => s.address },
   { header: "domain", value: (s) => s.domain },
   { header: "plan_label", value: (s) => s.planLabel },
   { header: "start_date", value: (s) => s.startDate },
@@ -31,6 +33,7 @@ const COLUMNS: {
 /** GET /api/export/services (docs/07 §3): CSV download, formula-injection safe. */
 export async function GET() {
   await requireAdmin()
+  await audit("export.csv", { entity: "services" })
   const rows = await exportServices()
   // BOM so Excel opens UTF-8 (Urdu names) correctly.
   const body = "﻿" + toCsv(rows, COLUMNS)

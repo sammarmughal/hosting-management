@@ -74,7 +74,34 @@ export function parsePaymentParams(sp: SearchParams): PaymentParams {
   return { q: first(sp.q).trim().slice(0, 100), ...range(sp), page: page(first(sp.page)) }
 }
 
+/* Invoices (docs/13 §11) --------------------------------------------- */
+
+export const INVOICE_FILTERS = ["all", "unpaid", "overdue", "paid", "void"] as const
+export type InvoiceFilter = (typeof INVOICE_FILTERS)[number]
+
+export interface InvoiceParams extends DateRange {
+  q: string
+  status: InvoiceFilter
+  /** A currency code, or "" for all. */
+  currency: string
+  page: number
+}
+
+export function parseInvoiceParams(sp: SearchParams): InvoiceParams {
+  const status = first(sp.status)
+  const currency = first(sp.currency).toUpperCase()
+  return {
+    q: first(sp.q).trim().slice(0, 100),
+    status: (INVOICE_FILTERS as readonly string[]).includes(status)
+      ? (status as InvoiceFilter)
+      : "all",
+    currency: /^[A-Z]{3}$/.test(currency) ? currency : "",
+    ...range(sp),
+    page: page(first(sp.page)),
+  }
+}
+
 /** True when anything narrows the list (for "Clear filters"). */
-export function isFiltered(p: ReminderLogParams | PaymentParams) {
-  return Object.entries(p).some(([k, v]) => k !== "page" && v !== "")
+export function isFiltered(p: ReminderLogParams | PaymentParams | InvoiceParams) {
+  return Object.entries(p).some(([k, v]) => k !== "page" && v !== "" && v !== "all")
 }

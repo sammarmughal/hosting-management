@@ -29,7 +29,7 @@ Tick items as they are done. Each phase ends with a **Done when** check. Estimat
 - [x] `next.config.ts`: `output: 'standalone'`, `poweredByHeader: false`.
 - [x] `tsconfig`: `strict: true`, `noUncheckedIndexedAccess: true`.
 - [ ] VS Code extensions: ESLint, Prettier, Tailwind CSS IntelliSense, Prisma, and optionally Playwright Test.
-- [ ] npm scripts: `dev`, `build`, `start`, `lint`, `test`, `test:e2e`, `db:migrate`, `db:seed`, `create-admin`, `reset-2fa`.
+- [x] npm scripts: `dev`, `build`, `start`, `lint`, `test`, `test:e2e`, `db:migrate`, `db:seed`, `create-admin`, `reset-2fa`.
 
 **Done when:** `npm run dev` shows the starter page and `npm run lint` passes.
 
@@ -57,54 +57,54 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 
 ## Phase 2 — Database + Prisma
 - [ ] Create a Neon project (region close to the Vercel region, e.g. Singapore or Frankfurt). Create a `dev` branch database for local work.
-- [ ] `npm i prisma @prisma/client`, then `npx prisma init`. Paste the schema from `03-DATABASE.md`.
-- [ ] `npx prisma migrate dev --name init`.
-- [ ] `prisma/seed.ts`: settings + default templates (+ demo data when `SEED_DEMO=1`).
-- [ ] `lib/server/db.ts` (singleton), `db-dates.ts`, `settings.ts` (typed, React `cache()`), `clock.ts`, `crypto.ts` (AES-256-GCM).
-- [ ] `lib/domain/stages.ts` and `validation.ts` (zod), with unit tests.
+- [x] `npm i prisma @prisma/client`, then `npx prisma init`. Paste the schema from `03-DATABASE.md`.
+- [x] `npx prisma migrate dev --name init`.
+- [x] `prisma/seed.ts`: settings + default templates (+ demo data when `SEED_DEMO=1`).
+- [x] `lib/server/db.ts` (singleton), `db-dates.ts`, `settings.ts` (typed, React `cache()`), `clock.ts`, `crypto.ts` (AES-256-GCM).
+- [x] `lib/domain/stages.ts` and `validation.ts` (zod), with unit tests.
 
 **Done when:** the migration and seed work, and `npx prisma studio` shows the demo data.
 
 ---
 
 ## Phase 3 — Authentication + 2FA + security
-- [ ] `npm i @node-rs/argon2 otplib qrcode` (+ `@types/qrcode`).
-- [ ] `scripts/create-admin.ts` and `scripts/reset-2fa.ts` (run with `tsx`).
-- [ ] `lib/server/session.ts` (DB sessions, `requireAdmin`, `requirePasswordStage`), `auth.ts` and `throttle.ts`.
-- [ ] `actions/auth.ts`, and connect the login, 2FA, setup (real QR SVG + recovery codes), forgot and reset pages.
-- [ ] `proxy.ts` (Next.js 16's `middleware.ts`): cookie-presence redirect + CSP nonce + security headers. Headers also go in `next.config.ts`.
-- [ ] `(app)/layout.tsx` calls `requireAdmin()`. Add a lint rule or a code-review checklist item: **every action calls `requireAdmin()` first**.
-- [ ] Audit log helper, with auth events logged.
+- [x] `npm i @node-rs/argon2 otplib qrcode` (+ `@types/qrcode`).
+- [x] `scripts/create-admin.ts` and `scripts/reset-2fa.ts` (run with `tsx`).
+- [x] `lib/server/session.ts` (DB sessions, `requireAdmin`, `requirePasswordStage`), `auth.ts` and `throttle.ts`.
+- [x] `actions/auth.ts`, and connect the login, 2FA, setup (real QR SVG + recovery codes), forgot and reset pages.
+- [x] `proxy.ts` (Next.js 16's `middleware.ts`): cookie-presence redirect + CSP nonce + security headers. Headers also go in `next.config.ts`.
+- [x] `(app)/layout.tsx` calls `requireAdmin()`. Add a lint rule or a code-review checklist item: **every action calls `requireAdmin()` first**.
+- [x] Audit log helper, with auth events logged.
 
 **Done when:** no page or action works without password + TOTP, the lockout works, recovery codes work once each, and logout really kills the session.
 
 ---
 
 ## Phase 4 — Clients & services (real data)
-- [ ] `lib/server/queries.ts`: the same function signatures as `lib/mock/queries.ts`, implemented with Prisma and returning the view-model types.
-- [ ] Switch `lib/data.ts` to the server queries.
-- [ ] `actions/clients.ts` and `actions/services.ts` (zod, phone and domain normalisation, renewal-date change → skip the old cycle).
-- [ ] Clients list: search, filters, sort (whitelisted), pagination via `searchParams`.
+- [x] `lib/server/queries.ts`: the same function signatures as `lib/mock/queries.ts`, implemented with Prisma and returning the view-model types.
+- [x] Switch `lib/data.ts` to the server queries.
+- [x] `actions/clients.ts` and `actions/services.ts` (zod, phone and domain normalisation, renewal-date change → skip the old cycle).
+- [x] Clients list: search, filters, sort (whitelisted), pagination via `searchParams`.
 
 **Done when:** full CRUD works on real data, and the UI is unchanged from Phase 1.
 
 ---
 
 ## Phase 5 — Dashboard + reminder check (no cron)
-- [ ] `lib/server/reminders.ts`: `runCheck()` exactly as in `04-BUSINESS-LOGIC.md` §4 (transaction, advisory lock, skip superseded, `createMany skipDuplicates`, notifications, `last_check_at`).
-- [ ] The dashboard page calls `runCheck({ force: false })` and then loads the stats, queue and due-soon list.
-- [ ] `checkNowAction`, plus the "Last checked" label.
-- [ ] The bell loads the latest notifications when opened (no polling), and the Notifications page works.
+- [x] `lib/server/reminders.ts`: `runCheck()` exactly as in `04-BUSINESS-LOGIC.md` §4 (transaction, advisory lock, skip superseded, `createMany skipDuplicates`, notifications, `last_check_at`).
+- [x] The dashboard page calls `runCheck({ force: false })` and then loads the stats, queue and due-soon list.
+- [x] `checkNowAction`, plus the "Last checked" label.
+- [x] The bell loads the latest notifications when opened (no polling), and the Notifications page works.
 
 **Done when:** opening the dashboard queues the correct reminders once. Reloading adds nothing. `FAKE_TODAY` 20 days ahead shows the catch-up behaviour (only the latest stage).
 
 ---
 
 ## Phase 6 — Email + WhatsApp
-- [ ] `npm i nodemailer` (+ `@types/nodemailer`). `lib/server/mail.ts` with the HTML wrapper and plain-text alternative, and the SMTP settings from the DB (decrypted).
-- [ ] Reminder actions: send email, mark opened, mark sent, skip, admin summary email and WhatsApp, and manual email.
-- [ ] The send-all dialog calls the real action one ID at a time, with progress and retry of the failed ones.
-- [ ] Auto-send on check (setting), with the batch limit.
+- [x] `npm i nodemailer` (+ `@types/nodemailer`). `lib/server/mail.ts` with the HTML wrapper and plain-text alternative, and the SMTP settings from the DB (decrypted).
+- [x] Reminder actions: send email, mark opened, mark sent, skip, admin summary email and WhatsApp, and manual email.
+- [x] The send-all dialog calls the real action one ID at a time, with progress and retry of the failed ones.
+- [x] Auto-send on check (setting), with the batch limit.
 - [ ] Test with a real Hostinger mailbox and a real phone.
 
 **Done when:** emails arrive with the correct content (not in spam), WhatsApp opens the right chat and text on Android and iPhone, and every state shows in the queue and the log.
@@ -112,9 +112,9 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 ---
 
 ## Phase 7 — Renewals, payments, notifications
-- [ ] `lib/server/renewals.ts` + `renewServiceAction` (Prisma `$transaction`).
-- [ ] The payments page with filters and per-currency totals, and `deletePaymentAction`.
-- [ ] Client detail tabs: Payments, Reminder log, Activity.
+- [x] `lib/server/renewals.ts` + `renewServiceAction` (Prisma `$transaction`).
+- [x] The payments page with filters and per-currency totals, and `deletePaymentAction`.
+- [x] Client detail tabs: Payments, Reminder log, Activity.
 
 **Done when:** renewing moves the date forward exactly one year, skips the old pending reminders, records the payment and creates a notification.
 
@@ -129,12 +129,12 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 ---
 
 ## Phase 9 — Testing + hardening
-- [ ] All Vitest unit and integration tests pass.
-- [ ] Playwright smoke tests: login + 2FA (TOTP generated from the test secret), add a client, renew, send-all with a mocked SMTP.
+- [x] All Vitest unit and integration tests pass.
+- [x] Playwright smoke tests: login + 2FA (TOTP generated from the test secret), add a client, renew, send-all with a mocked SMTP.
 - [ ] Manual QA checklist (`10-TESTING.md` §2) fully ticked.
 - [ ] Security checklist (`05-SECURITY.md` §12) fully ticked.
 - [ ] Performance: seed 1,000 services, and the dashboard's server response is under 1 s.
-- [ ] Remove `src/lib/mock/` (or exclude it from the production build).
+- [x] Remove `src/lib/mock/` (or exclude it from the production build).
 
 ---
 

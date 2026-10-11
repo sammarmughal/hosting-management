@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { CopyIcon, QrCodeIcon } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { CopyIcon } from "lucide-react"
 import { AuthHeading } from "@/components/auth-heading"
 import { InlineAlert } from "@/components/inline-alert"
 import { StepIndicator } from "@/components/step-indicator"
@@ -10,17 +9,16 @@ import { OtpInput } from "@/components/auth/otp-input"
 import { RecoveryCodes, copyText } from "@/components/auth/recovery-codes"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { setupCodeAction } from "@/lib/mock/auth-actions"
+import { finishSetupAction, setupCodeAction } from "@/actions/auth"
 
-const manualKey = "JBSW Y3DP EHPK 3PXP"
-export function SetupForm() {
+/** The QR image and key come from the server (the pending secret never reaches a cookie). */
+export function SetupForm({ qrSrc, manualKey }: { qrSrc: string; manualKey: string }) {
   const [step, setStep] = useState(0)
   const [code, setCode] = useState("")
   const [codes, setCodes] = useState<string[]>([])
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState("")
   const [pending, start] = useTransition()
-  const router = useRouter()
   return (
     <>
       <StepIndicator steps={["Scan", "Verify", "Save"]} current={step} />
@@ -36,13 +34,10 @@ export function SetupForm() {
       />
       {step === 0 ? (
         <div className="space-y-5">
-          <div
-            className="mx-auto flex size-50 flex-col items-center justify-center gap-3 rounded-md border border-border bg-surface-subtle"
-            role="img"
-            aria-label="QR code placeholder"
-          >
-            <QrCodeIcon className="size-24 text-ink-muted" />
-            <span className="text-xs text-ink-muted">QR code preview</span>
+          <div className="mx-auto flex size-50 items-center justify-center rounded-md border border-border bg-white p-2">
+            {/* Generated on our server; no external QR service (docs/05 §3). */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={qrSrc} alt="QR code for your authenticator app" className="size-full" />
           </div>
           <div>
             <p className="mb-2 text-sm text-ink-muted">Can’t scan? Enter this key:</p>
@@ -99,6 +94,7 @@ export function SetupForm() {
         </form>
       ) : (
         <div className="space-y-5">
+          {error && <InlineAlert>{error}</InlineAlert>}
           <RecoveryCodes codes={codes} />
           <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
             <Checkbox checked={saved} onCheckedChange={(v) => setSaved(v === true)} />I
@@ -107,7 +103,19 @@ export function SetupForm() {
           <Button
             className="w-full"
             disabled={!saved}
-            onClick={() => router.push("/dashboard")}
+            loading={pending}
+            onClick={() =>
+              start(async () => {
+                setError("")
+                try {
+                  // Promotes the session and redirects to the dashboard.
+                  const res = await finishSetupAction()
+                  if (res && !res.ok) setError(res.error)
+                } catch {
+                  setError("Couldn’t finish setup. Try again.")
+                }
+              })
+            }
           >
             Continue
           </Button>

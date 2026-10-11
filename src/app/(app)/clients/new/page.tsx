@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import { ClientForm } from "@/components/client-form"
 import { PageHeader } from "@/components/page-header"
 import { addOneYear, todayPK } from "@/lib/domain/dates"
-import type { Currency } from "@/lib/domain/validation"
+import { currencyOptions } from "@/lib/domain/validation"
 import { getSettings } from "@/lib/data"
 
 export const metadata: Metadata = { title: "Add client" }
@@ -20,15 +20,16 @@ export default async function NewClientPage() {
       />
       <ClientForm
         mode="new"
+        currencies={currencyOptions(settings.enabledCurrencies)}
         defaultValues={{
-          client: { name: "", company: "", email: "", phone: "", notes: "" },
+          client: { name: "", company: "", email: "", phone: "", address: "", notes: "" },
           service: {
             domain: "",
             planLabel: "",
             startDate: today,
             renewalDate: addOneYear(today),
             chargeAmount: "",
-            currency: settings.defaultCurrency as Currency,
+            currency: settings.defaultCurrency,
             remindersEnabled: true,
             notes: "",
           },

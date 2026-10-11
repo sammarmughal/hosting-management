@@ -161,6 +161,20 @@ vite.config.ts.timestamp-*
 /playwright-report
 /blob-report
 /screenshots
+/tests/e2e/.auth
+
+# test / local databases and dumps (Postgres data dirs live outside the repo)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sql
+!prisma/migrations/**/*.sql
+/pgdata
+/.pgdata
+
+# prisma generate output (rebuilt by postinstall)
+/src/generated/
 
 # next.js
 /.next/

@@ -15,7 +15,7 @@ One private web app where the admin can:
 
 ## 3. Constraints (approved)
 
-- **No cron jobs and no scheduled server requests.** Reminder checks run only when the admin opens the app (see `04-BUSINESS-LOGIC.md` §4).
+- **No background workers.** Reminder checks run when the admin opens the app (see `04-BUSINESS-LOGIC.md` §4), from Check now, and once a day from a scheduled request to `/api/cron/check` (owner decision, 11 Oct 2026; docs/11).
 - **WhatsApp without the paid API.** Use `wa.me` click-to-chat links with pre-filled text. The admin taps Send in WhatsApp.
 - **Single admin account**, fully authenticated, with nobody else able to access the app.
 - Built with **Next.js**. Deployed on **Vercel** (primary), and it must also run on **Hostinger's Node.js hosting** without code changes.
@@ -140,7 +140,7 @@ One private web app where the admin can:
 - Hostinger API integration (auto-suspend)
 - Multiple users or roles, and a client portal
 - WhatsApp Business API or other automated WhatsApp sending
-- Cron jobs or any background workers
+- Background workers (the only scheduled job is the daily check, docs/11)
 - Multi-language UI (English only in v1. Urdu is possible later)
 
 ## 9. Acceptance Criteria (release checklist)

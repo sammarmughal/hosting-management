@@ -48,8 +48,17 @@ describe("clientSchema", () => {
       company: null,
       email: "info@noordental.pk",
       phone: "923214455667",
+      address: null,
       notes: null,
     })
+  })
+
+  it("keeps an optional address, trimmed, and caps its length", () => {
+    expect(clientSchema.parse({ ...client, address: "  Office 4, Blue Area\nIslamabad  " }).address).toBe(
+      "Office 4, Blue Area\nIslamabad"
+    )
+    expect(clientSchema.parse({ ...client, address: "" }).address).toBeNull()
+    expect(clientSchema.safeParse({ ...client, address: "x".repeat(301) }).success).toBe(false)
   })
 
   it("needs a name of at least 2 characters", () => {

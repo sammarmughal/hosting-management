@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { sendAdminSummaryEmailAction, sendReminderEmailAction } from "@/lib/mock/actions"
+import { sendAdminSummaryEmailAction, sendReminderEmailAction } from "@/actions/reminders"
 
 export interface EmailRecipient {
   /** Reminder row id */

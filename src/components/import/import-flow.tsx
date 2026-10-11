@@ -22,13 +22,20 @@ import { downloadText } from "@/lib/download"
 import {
   IMPORT_HEADERS,
   previewImport,
+  type ImportCurrencies,
   type ImportRow,
   type PreviewRow,
 } from "@/lib/domain/import"
-import { commitImportAction } from "@/lib/mock/import-actions"
+import { commitImportAction } from "@/actions/import"
 import { cn } from "@/lib/utils"
 
-export function ImportFlow({ domains }: { domains: string[] }) {
+export function ImportFlow({
+  domains,
+  currencies,
+}: {
+  domains: string[]
+  currencies: ImportCurrencies
+}) {
   const fileInput = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState(0)
   const [fileName, setFileName] = useState("")
@@ -40,7 +47,7 @@ export function ImportFlow({ domains }: { domains: string[] }) {
   const [page, setPage] = useState(0)
   const [pending, start] = useTransition()
   const [done, setDone] = useState({ created: 0, updated: 0, skipped: 0 })
-  const preview = previewImport(rows, domains)
+  const preview = previewImport(rows, domains, undefined, currencies)
   const counts = {
     valid: preview.filter((r) => r.status === "valid").length,
     warning: preview.filter((r) => r.status === "warning").length,

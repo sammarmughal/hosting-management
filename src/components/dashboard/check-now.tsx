@@ -3,13 +3,14 @@
 import * as React from "react"
 import { attemptAction } from "@/lib/attempt-action"
 import { RefreshCwIcon } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useNow } from "@/hooks/use-now"
 import { formatDateTimePK, formatRelative } from "@/lib/domain/relative-time"
-import { checkNowAction } from "@/lib/mock/actions"
+import { checkNowAction } from "@/actions/reminders"
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
@@ -26,6 +27,7 @@ export function CheckNow({
   initialLabel: string
 }) {
   const now = useNow()
+  const router = useRouter()
   const [lastCheckAt, setLastCheckAt] = React.useState(initialLastCheckAt)
   const [checking, setChecking] = React.useState(false)
   const label = now ? formatRelative(lastCheckAt, new Date(now)) : initialLabel
@@ -41,7 +43,11 @@ export function CheckNow({
     const r = res.data
     setLastCheckAt(r.lastCheckAt)
     const queued = r.queuedNew ? plural(r.queuedNew, "new reminder") : "no new reminders"
-    toast.success(`Checked ${plural(r.servicesChecked, "service")} · ${queued}`)
+    // docs/13 §4: the check also creates invoices; say so.
+    const invoices = r.invoicesNew ? ` · ${plural(r.invoicesNew, "new invoice")}` : ""
+    toast.success(`Checked ${plural(r.servicesChecked, "service")} · ${queued}${invoices}`)
+    // Reload the queue and counts from the server.
+    router.refresh()
   }
 
   return (

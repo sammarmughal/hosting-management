@@ -7,12 +7,14 @@ import { toast } from "sonner"
 import { FormField } from "@/components/form-field"
 import { PasswordInput } from "@/components/password-input"
 import { SettingsSection, SettingInput } from "@/components/settings/settings-section"
+import { InvoiceSettingsForm } from "@/components/settings/invoice-settings"
 import { ReminderSettingsForm } from "@/components/settings/reminder-settings"
 import { TemplateSettingsForms } from "@/components/settings/template-settings"
 import { SecuritySettings } from "@/components/settings/security-settings"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { CURRENCIES } from "@/lib/domain/validation"
-import { sendTestEmailAction } from "@/lib/mock/settings-actions"
+import { sendTestEmailAction } from "@/actions/settings"
 import type { Preferences } from "@/lib/domain/preferences"
 import { cn } from "@/lib/utils"
 
@@ -20,6 +22,7 @@ const tabs = {
   business: "Business",
   reminders: "Reminders",
   email: "Email",
+  invoices: "Invoices",
   templates: "Templates",
   security: "Security",
 }
@@ -32,10 +35,12 @@ export function SettingsPanel({
   tab,
   today,
   logins,
+  invoiceCount,
 }: {
   initial: Preferences
   tab: string
   today: string
+  invoiceCount: number
   logins: React.ComponentProps<typeof SecuritySettings>["logins"]
 }) {
   const router = useRouter()
@@ -114,6 +119,36 @@ export function SettingsPanel({
                   value={draft.adminWhatsapp}
                   onChange={(adminWhatsapp) => update({ adminWhatsapp })}
                 />
+                <fieldset className="grid gap-1.5">
+                  <legend className="mb-1.5 text-sm leading-none font-medium">
+                    Currencies
+                  </legend>
+                  <div className="flex flex-wrap gap-x-5">
+                    {CURRENCIES.map((c) => (
+                      <label
+                        key={c}
+                        className="flex min-h-11 items-center gap-2 text-sm md:min-h-9"
+                      >
+                        <Checkbox
+                          checked={draft.enabledCurrencies.includes(c)}
+                          disabled={c === draft.defaultCurrency}
+                          aria-describedby="currencies-help"
+                          onCheckedChange={(on) =>
+                            update({
+                              enabledCurrencies: CURRENCIES.filter((x) =>
+                                x === c ? on === true : draft.enabledCurrencies.includes(x)
+                              ),
+                            })
+                          }
+                        />
+                        {c}
+                      </label>
+                    ))}
+                  </div>
+                  <p id="currencies-help" className="text-xs text-ink-muted">
+                    Offered on the service form. The default currency is always on.
+                  </p>
+                </fieldset>
                 <FormField id="default-currency" label="Default currency">
                   <select
                     id="default-currency"
@@ -125,7 +160,7 @@ export function SettingsPanel({
                       })
                     }
                   >
-                    {CURRENCIES.map((c) => (
+                    {draft.enabledCurrencies.map((c) => (
                       <option key={c}>{c}</option>
                     ))}
                   </select>
@@ -239,6 +274,15 @@ export function SettingsPanel({
                 </>
               )}
             </SettingsSection>
+          </div>
+        )}
+        {visited.includes("invoices") && (
+          <div hidden={active !== "invoices"}>
+            <InvoiceSettingsForm
+              initial={initial.invoices}
+              invoiceCount={invoiceCount}
+              year={Number(today.slice(0, 4))}
+            />
           </div>
         )}
         {visited.includes("templates") && (

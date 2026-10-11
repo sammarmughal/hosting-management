@@ -1,12 +1,18 @@
 import { addOneYear, isISODate, todayPK } from "@/lib/domain/dates"
 import { normaliseDomain } from "@/lib/domain/hostname"
-import { newClientSchema, type NewClientInput } from "@/lib/domain/validation"
+import {
+  CURRENCIES,
+  newClientSchema,
+  type Currency,
+  type NewClientInput,
+} from "@/lib/domain/validation"
 
 export const IMPORT_HEADERS = [
   "client_name",
   "company",
   "email",
   "phone",
+  "address",
   "domain",
   "plan_label",
   "start_date",
@@ -27,10 +33,18 @@ function date(value: string) {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value)
   return match ? `${match[3]}-${match[2]}-${match[1]}` : value
 }
+export interface ImportCurrencies {
+  /** Used when the currency column is blank. */
+  default: Currency
+  enabled: readonly Currency[]
+}
+const ALL_CURRENCIES: ImportCurrencies = { default: "PKR", enabled: CURRENCIES }
+
 export function previewImport(
   rows: ImportRow[],
   existingDomains: string[],
-  today = todayPK()
+  today = todayPK(),
+  currencies: ImportCurrencies = ALL_CURRENCIES
 ): PreviewRow[] {
   const existing = new Set(existingDomains.map(normaliseDomain))
   const seen = new Set<string>()
@@ -46,6 +60,7 @@ export function previewImport(
         company: get("company"),
         email: get("email"),
         phone: get("phone"),
+        address: get("address"),
         notes: get("notes"),
       },
       service: {
@@ -54,12 +69,14 @@ export function previewImport(
         startDate,
         renewalDate,
         chargeAmount: get("charge_amount"),
-        currency: get("currency").toUpperCase() || "PKR",
+        currency: get("currency").toUpperCase() || currencies.default,
         remindersEnabled: true,
         notes: "",
       },
     } as NewClientInput
     const parsed = newClientSchema.safeParse(input)
+    const currencyOff =
+      parsed.success && !currencies.enabled.includes(parsed.data.service.currency)
     const duplicate = seen.has(domain)
     seen.add(domain)
     const messages = []
@@ -74,10 +91,16 @@ export function previewImport(
       input,
       existing: existing.has(domain),
       status:
-        !parsed.success || duplicate ? "error" : messages.length ? "warning" : "valid",
+        !parsed.success || currencyOff || duplicate
+          ? "error"
+          : messages.length
+            ? "warning"
+            : "valid",
       message: !parsed.success
         ? parsed.error.issues.map((i) => i.message).join("; ")
-        : duplicate
+        : currencyOff
+          ? `${parsed.data.service.currency} isn’t turned on in Settings`
+          : duplicate
           ? "Duplicate domain in this file"
           : messages.join("; ") || "Ready to import",
     }

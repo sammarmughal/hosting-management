@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { FormField } from "@/components/form-field"
 import { InlineAlert } from "@/components/inline-alert"
 import { Switch } from "@/components/ui/switch"
-import { savePreferencesAction } from "@/lib/mock/settings-actions"
+import { savePreferencesAction } from "@/actions/settings"
 import type { PreferenceSection } from "@/lib/domain/preferences"
 
 export function SettingsSection<T extends object>({
@@ -78,7 +78,8 @@ export function SettingsSection<T extends object>({
             loading={pending}
             title={!dirty ? "No unsaved changes" : undefined}
           >
-            Save {title.toLowerCase()}
+            {/* "Save client WhatsApp": lower-case the first letter only. */}
+            Save {title.charAt(0).toLowerCase() + title.slice(1)}
           </Button>
         </div>
       </form>

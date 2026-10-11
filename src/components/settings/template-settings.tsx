@@ -19,7 +19,14 @@ const names: Record<TemplateKey, string> = {
   client_whatsapp: "Client WhatsApp",
   admin_email: "Admin email",
   admin_whatsapp: "Admin WhatsApp",
+  invoice_email: "Invoice email",
+  invoice_whatsapp: "Invoice WhatsApp",
 }
+
+/** docs/13 §10 writes these with double braces; the renderer accepts both forms. */
+const INVOICE_PLACEHOLDERS = ["invoice_number", "invoice_link", "invoice_total", "due_date"]
+const placeholderToken = (key: string) =>
+  INVOICE_PLACEHOLDERS.includes(key) ? `{{${key}}}` : `{${key}}`
 
 export function TemplateSettingsForms({
   initial,
@@ -39,7 +46,9 @@ export function TemplateSettingsForms({
           description={
             key.startsWith("client")
               ? "The reminder sent to a client about their hosting service."
-              : "The renewal summary sent to your admin address or number."
+              : key.startsWith("invoice")
+                ? "Sent with Share invoice. The email attaches the PDF."
+                : "The renewal summary sent to your admin address or number."
           }
           section={key}
           initial={initial[key]}
@@ -85,16 +94,22 @@ function TemplateFields({
     days_left: Math.abs(days),
     days_text: daysText(days),
     amount: "6,500",
-    currency: "PKR",
+    currency: business.defaultCurrency,
     business_name: business.businessName,
     business_phone: business.businessPhone,
     today: formatDatePK(today),
     count: "1",
-    summary_list: "ayeshacouture.pk · Ayesha Siddiqui · PKR 6,500",
-    summary_table: "<p>ayeshacouture.pk · Ayesha Siddiqui · PKR 6,500</p>",
+    summary_list: `ayeshacouture.pk · Ayesha Siddiqui · ${business.defaultCurrency} 6,500`,
+    summary_table: `<p>ayeshacouture.pk · Ayesha Siddiqui · ${business.defaultCurrency} 6,500</p>`,
+    // docs/13 §10
+    invoice_number: "INV-2026-0012",
+    invoice_link: "https://renewals.rehmanweb.pk/i/Xb3…",
+    invoice_total: `${business.defaultCurrency} 6,500`,
+    due_date: formatDatePK(addDays(today, days)),
   }
-  const placeholders = templateKey.startsWith("client")
-    ? [
+  const placeholders = templateKey.startsWith("admin")
+    ? ["today", "count", email ? "summary_table" : "summary_list"]
+    : [
         "client_name",
         "domain",
         "renewal_date",
@@ -103,14 +118,14 @@ function TemplateFields({
         "currency",
         "business_name",
         "business_phone",
+        ...INVOICE_PLACEHOLDERS,
       ]
-    : ["today", "count", email ? "summary_table" : "summary_list"]
   function insert(key: string) {
     const field = active.current
     const el = field === "subject" ? subject.current : body.current
     const start = el?.selectionStart ?? draft[field].length
     const end = el?.selectionEnd ?? start
-    const token = `{${key}}`
+    const token = placeholderToken(key)
     update({ [field]: draft[field].slice(0, start) + token + draft[field].slice(end) })
     requestAnimationFrame(() => {
       el?.focus()
@@ -164,7 +179,9 @@ function TemplateFields({
               size="xs"
               className="font-mono"
               onClick={() => insert(key)}
-            >{`{${key}}`}</Button>
+            >
+              {placeholderToken(key)}
+            </Button>
           ))}
         </div>
       </div>

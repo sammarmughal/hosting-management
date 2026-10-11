@@ -53,7 +53,7 @@ Client component <ReminderQueue/>:
   [Open WhatsApp]   → <a href="https://wa.me/…" target="_blank"> + markOpenedAction(id)
 ```
 
-- There is **no background process and no Vercel Cron**. Everything runs inside the admin's own requests.
+- There is **no background process**. Everything runs inside requests: the admin's own, plus **one daily scheduled request** (owner decision, 11 Oct 2026): Vercel Cron (`vercel.json`, 04:00 UTC = 09:00 PKT) or a Hostinger cron entry calls `GET/POST /api/cron/check` with `Authorization: Bearer <CRON_SECRET>`. It runs the same idempotent `runCheck({ force: true })` under the same advisory lock (docs/11).
 - Sending one email per action call keeps every request short (well under the Vercel function time limit).
 
 ## 3. Folder structure

@@ -2,7 +2,8 @@ import { toCsv } from "@/lib/domain/csv"
 import { todayPK } from "@/lib/domain/dates"
 import { exportPayments } from "@/lib/data"
 import { parsePaymentParams } from "@/lib/list-filters"
-import { requireAdmin } from "@/lib/mock/auth"
+import { audit } from "@/lib/server/audit"
+import { requireAdmin } from "@/lib/server/session"
 import type { PaymentRow } from "@/types/view"
 
 export const runtime = "nodejs"
@@ -26,6 +27,7 @@ const COLUMNS: {
 /** GET /api/export/payments?from&to (docs/07 §3): CSV download, formula-injection safe. */
 export async function GET(request: Request) {
   await requireAdmin()
+  await audit("export.csv", { entity: "payments" })
   const { searchParams } = new URL(request.url)
   const range = parsePaymentParams(Object.fromEntries(searchParams))
   const rows = await exportPayments(range)
