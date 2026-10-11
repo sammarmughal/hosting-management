@@ -6,6 +6,7 @@ import type { Prisma } from "@/generated/prisma/client"
 import { formatDatePK } from "@/lib/domain/dates"
 import {
   displayStatus,
+  INVOICE_STATUS_LABEL,
   type BillToSnapshot,
   type SellerSnapshot,
 } from "@/lib/domain/invoices"
@@ -145,6 +146,56 @@ export async function listInvoices(p: InvoiceParams): Promise<InvoiceList> {
     outstanding: sums(openSums),
     currencies: currencies.map((c) => c.currency).sort(),
   }
+}
+
+export interface InvoiceExportRow {
+  number: string
+  issueDate: string
+  dueDate: string
+  clientName: string
+  company: string | null
+  domain: string
+  periodStart: string
+  periodEnd: string
+  currency: string
+  subtotal: string
+  discount: string
+  /** Percent, e.g. "17.00". */
+  taxRate: string
+  taxAmount: string
+  total: string
+  /** Unpaid · Sent · Overdue · Paid · Void (overdue is derived). */
+  status: string
+  paidOn: string | null
+  voidReason: string | null
+}
+
+/** Every invoice, oldest number first (CSV export / weekly backup). */
+export async function exportInvoices(): Promise<InvoiceExportRow[]> {
+  const today = (await viewContext()).today
+  const rows = await prisma.invoice.findMany({
+    include: listInclude,
+    orderBy: [{ issueDate: "asc" }, { id: "asc" }],
+  })
+  return rows.map((i) => ({
+    number: i.number,
+    issueDate: fromDbDate(i.issueDate),
+    dueDate: fromDbDate(i.dueDate),
+    clientName: i.client.name,
+    company: i.client.company,
+    domain: i.service.domain,
+    periodStart: fromDbDate(i.periodStart),
+    periodEnd: fromDbDate(i.periodEnd),
+    currency: i.currency,
+    subtotal: i.subtotal.toFixed(MONEY_SCALE),
+    discount: i.discount.toFixed(MONEY_SCALE),
+    taxRate: i.taxRate.toFixed(2),
+    taxAmount: i.taxAmount.toFixed(MONEY_SCALE),
+    total: i.total.toFixed(MONEY_SCALE),
+    status: INVOICE_STATUS_LABEL[displayStatus(i.status, fromDbDate(i.dueDate), today)],
+    paidOn: i.paidAt ? fromDbDate(i.paidAt) : null,
+    voidReason: i.voidReason,
+  }))
 }
 
 /** The client page's Invoices tab, newest first. */

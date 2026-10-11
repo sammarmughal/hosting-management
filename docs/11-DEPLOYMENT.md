@@ -10,13 +10,8 @@ Owner decision (11 Oct 2026): the app runs on **Hostinger** as a Node.js app, an
    - **Pooled** (host contains `-pooler`) → `DATABASE_URL` (used by the app)
    - **Direct** → `DIRECT_URL` (used by migrations)
    Both end with `?sslmode=require`; keep it.
-3. From your machine, run:
-   ```bash
-   DATABASE_URL=… DIRECT_URL=… npx prisma migrate deploy
-   DATABASE_URL=… DIRECT_URL=… npx prisma db seed           # settings + templates
-   DATABASE_URL=… npm run create-admin                        # the single admin
-   ```
-4. Neon keeps point-in-time restore history (how far back depends on the plan). Also do a monthly `pg_dump` (see §6).
+3. Set up the database with the production setup script (step 4 of §2 below), not with `db:seed`: it applies the migrations and creates the admin, and loads **no demo or seed data**.
+4. Neon keeps point-in-time restore history (how far back depends on the plan). Also take your own backups (see §6).
 
 ## 2. Environment variables
 Set these in hPanel → the Node.js app → **Environment variables** (never upload a `.env` file):
@@ -35,6 +30,29 @@ Do **not** set `FAKE_TODAY`, `SEED_DEMO`, `MAIL_TRANSPORT` or `ALLOW_LOCAL_APP_U
 
 `APP_URL` must be the real public **https** URL: invoice links (`/i/<token>`) and reset emails are built from it. In production the server **refuses to start** if it is missing, uses http, or points to localhost (`src/instrumentation.ts`); the app log then shows `Refusing to start: …`.
 
+### First-time database setup: `npm run setup:prod`
+Run once, from your machine (with the repo checked out and `npm ci` done), before the first deploy goes live:
+
+1. Create `.env.production` in the project folder (it is git-ignored; delete it afterwards or keep it somewhere private) with the same values as the table above, plus the admin's details:
+   ```sh
+   DATABASE_URL="postgresql://…-pooler….neon.tech/hrm?sslmode=require"
+   DIRECT_URL="postgresql://….neon.tech/hrm?sslmode=require"
+   APP_URL="https://renewals.abdulrehmaan.net"
+   APP_KEY="base64:…"
+   CRON_SECRET="…"
+   ADMIN_USERNAME="rehman"            # optional: leave the three ADMIN_ lines out
+   ADMIN_EMAIL="billing@abdulrehmaan.net"   # to be asked in the terminal instead
+   ADMIN_PASSWORD="…12+ characters…"
+   ```
+2. Run:
+   ```sh
+   npm run setup:prod -- --env-file .env.production
+   ```
+   It checks the variables (and stops with a list of what to fix), shows the database host and asks you to type `yes`, applies the migrations (`prisma migrate deploy` with `DIRECT_URL`), then creates the admin from the `ADMIN_` variables or by asking for username, email and password (hidden). Add `--yes` to skip the confirmation in a non-interactive shell.
+3. Remove `ADMIN_PASSWORD` from the file. Sign in at `/login` and set up two-step verification.
+
+It never loads demo or seed data: there are no clients, and settings and message templates use their built-in defaults until you save them in the app. Running it again is safe: applied migrations are skipped and an existing admin is left unchanged (`npm run create-admin -- --force` replaces the admin; `npm run reset-2fa` turns 2FA off if the phone is lost).
+
 ## 3. Hostinger Node.js app
 Node.js apps are available on Hostinger **Business web hosting** and **Cloud** plans (not on lower shared plans). A VPS also works.
 
@@ -51,7 +69,8 @@ Node.js apps are available on Hostinger **Business web hosting** and **Cloud** p
    | Entry file / start | `.next/standalone/server.js` (or `npm start`, which runs the same file). The `postbuild` script (`scripts/postbuild.mjs`) copies `public/` and `.next/static/` next to it and removes any `.env` file from the build output. The server listens on `PORT`, which Hostinger sets. |
 5. Add the environment variables from §2, then redeploy.
 6. **Domain:** connect `renewals.abdulrehmaan.net` to the app (hPanel → the app → **Domains**; if `abdulrehmaan.net` is managed in Hostinger, the DNS record is added for you, otherwise add the record hPanel shows at your DNS provider). Turn on the free SSL certificate and **Force HTTPS**.
-7. Test: `https://renewals.abdulrehmaan.net/api/health` returns `ok`, and login + 2FA works.
+7. Test: `https://renewals.abdulrehmaan.net/api/health` returns `{"status":"ok","db":"ok"}`, and login + 2FA works.
+8. **Uptime monitoring (recommended):** add `https://renewals.abdulrehmaan.net/api/health` to a free uptime monitor (e.g. UptimeRobot, every 5 minutes, alert by email). The endpoint needs no login and returns no data: HTTP 200 `{"status":"ok","db":"ok"}` when the app and the database are up, HTTP 503 `{"status":"error","db":"unreachable"}` when the database doesn't answer within 3 seconds. Alert on anything other than 200.
 
 > If you later want the database on Hostinger too, switch Prisma to MySQL (see `02-ARCHITECTURE.md` §1 note) and run a fresh migration on the Hostinger MySQL.
 
@@ -82,13 +101,21 @@ The app runs no background workers. Once a day a cron job calls `/api/cron/check
 5. **Import** the real client list (CSV). Use `client_currency` for clients who don't pay in the default currency (e.g. `AED` for a UAE client); leave it blank for the default.
 
 ## 6. Backups
-- Neon point-in-time restore (by plan).
-- Monthly: `pg_dump "$DIRECT_URL" > hrm-YYYY-MM.sql` from your machine, stored privately (e.g. the owner's Google Drive).
-- In-app **Export services CSV** + **Export payments CSV** monthly, as a human-readable backup.
+Three layers, from automatic to manual:
+
+1. **Neon point-in-time restore** (automatic; how far back depends on the plan). Restore from the Neon console into a new branch, check it, then point the app at it.
+2. **Database dump: `npm run backup`** (the developer, monthly and before every migration). From your machine, with the PostgreSQL client tools installed (`pg_dump` 17 or newer; set `PG_DUMP` to its full path if it isn't on the PATH):
+   ```sh
+   npm run backup -- --env-file .env.production
+   ```
+   It dumps the database in `DIRECT_URL` to `backups/hrm-YYYY-MM-DD-HHMM.dump` (dated in Pakistan time; custom format, compressed; `--sql` writes plain SQL instead, `--out <folder>` picks another folder), checks the file and prints its size. The password is never printed. `backups/` is git-ignored: copy the file somewhere private (e.g. the owner's Google Drive) and delete local copies you don't need.
+   - **Restore** into an empty database (e.g. a new Neon branch): `pg_restore --no-owner --no-privileges --dbname="<direct URL of the empty database>" backups/hrm-….dump`, then point `DATABASE_URL`/`DIRECT_URL` at it.
+3. **Weekly CSV export from the app** (the owner, every week, 2 minutes): **Settings → Backup** has four downloads: **Clients**, **Services**, **Payments** and **Invoices**. Click each **CSV** button and save the four files into a dated folder (e.g. `Renewals backup 2026-10-12`) in Google Drive. They open in Excel, so the business can keep going from them even without the app. The same exports are also on the Clients page (services) and the Payments page (payments for the selected dates). Every download is recorded in the audit log.
 
 ## 7. Go-live checks
 - [ ] HTTPS padlock on `renewals.abdulrehmaan.net`, http redirects to https, and the HSTS header is present.
-- [ ] `/api/health` returns `ok`.
+- [ ] `/api/health` returns `{"status":"ok","db":"ok"}`, and an uptime monitor watches it.
+- [ ] `npm run backup` works from your machine, and Settings → Backup downloads all four CSV files.
 - [ ] Logged out → every page redirects to `/login`.
 - [ ] Login + 2FA works on the owner's phone.
 - [ ] A test email lands in the Gmail inbox (not spam).

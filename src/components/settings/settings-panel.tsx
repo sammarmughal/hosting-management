@@ -11,6 +11,7 @@ import { InvoiceSettingsForm } from "@/components/settings/invoice-settings"
 import { ReminderSettingsForm } from "@/components/settings/reminder-settings"
 import { TemplateSettingsForms } from "@/components/settings/template-settings"
 import { SecuritySettings } from "@/components/settings/security-settings"
+import { BackupSettings } from "@/components/settings/backup-settings"
 import { CurrencySettings } from "@/components/settings/currency-settings"
 import { Button } from "@/components/ui/button"
 import type { CurrencyOption, CurrencyUse } from "@/lib/domain/currency"
@@ -25,6 +26,7 @@ const tabs = {
   invoices: "Invoices",
   templates: "Templates",
   security: "Security",
+  backup: "Backup",
 }
 export type SettingsTab = keyof typeof tabs
 const selectClass =
@@ -262,6 +264,11 @@ export function SettingsPanel({
         {visited.includes("security") && (
           <div hidden={active !== "security"}>
             <SecuritySettings logins={logins} />
+          </div>
+        )}
+        {visited.includes("backup") && (
+          <div hidden={active !== "backup"}>
+            <BackupSettings />
           </div>
         )}
       </div>

@@ -20,6 +20,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "create-admin": "tsx scripts/create-admin.ts",
+    "setup:prod": "tsx scripts/setup-production.ts",
+    "backup": "tsx scripts/backup-db.ts",
     "reset-2fa": "tsx scripts/reset-2fa.ts"
   },
   "dependencies": {

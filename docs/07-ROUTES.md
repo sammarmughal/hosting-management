@@ -95,8 +95,11 @@ The manual WhatsApp link for a service is **built on the server when the page re
 |------|------|-------|
 | `GET /api/export/services` | `app/api/export/services/route.ts` | CSV, formula-injection safe, audit logged. Calls `requireAdmin()` |
 | `GET /api/export/payments?from&to` | `app/api/export/payments/route.ts` | CSV |
+| `GET /api/export/clients` | `app/api/export/clients/route.ts` | CSV, one row per client (Settings → Backup). Calls `requireAdmin()` |
+| `GET /api/export/invoices` | `app/api/export/invoices/route.ts` | CSV, every invoice (Settings → Backup). Calls `requireAdmin()` |
 | `GET /api/import/template` | `app/api/import/template/route.ts` | Empty CSV template |
-| `GET /api/health` | `app/api/health/route.ts` | Public, returns `ok` (for uptime checks, no data) |
+| `GET /api/health` | `app/api/health/route.ts` | Public uptime check, no login: 200 `{"status":"ok","db":"ok"}`, or 503 `{"status":"error","db":"unreachable"}` when the database doesn't answer in 3 s. No data, versions or error text |
+| `GET/POST /api/cron/check` | `app/api/cron/check/route.ts` | The daily check, `Authorization: Bearer <CRON_SECRET>` (docs/11 §4) |
 
 ## 4. Client-side conventions
 

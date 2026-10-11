@@ -4,7 +4,7 @@ import "server-only"
 // re-exports this file. Same exports and signatures as the Phase 1 mock
 // queries, implemented with Prisma and returning the view-model types.
 import type { Prisma, ReminderChannel } from "@/generated/prisma/client"
-import { addDays, formatDatePK } from "@/lib/domain/dates"
+import { addDays, formatDatePK, todayPK } from "@/lib/domain/dates"
 import { adminWhatsappText } from "@/lib/domain/messages"
 import {
   formatMoney,
@@ -449,6 +449,39 @@ function buildActivity(
     }),
   ]
   return items.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+}
+
+export interface ClientExportRow {
+  name: string
+  company: string | null
+  email: string | null
+  /** Normalised digits. */
+  phone: string | null
+  address: string | null
+  currency: string
+  services: number
+  notes: string | null
+  /** YYYY-MM-DD (PK). */
+  createdOn: string
+}
+
+/** Every client, by name (CSV export / weekly backup). */
+export async function exportClients(): Promise<ClientExportRow[]> {
+  const rows = await prisma.client.findMany({
+    include: { _count: { select: { services: true } } },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  })
+  return rows.map((c) => ({
+    name: c.name,
+    company: c.company,
+    email: c.email,
+    phone: c.phone,
+    address: c.address,
+    currency: c.currency,
+    services: c._count.services,
+    notes: c.notes,
+    createdOn: todayPK(c.createdAt),
+  }))
 }
 
 /** Every service, by renewal date (CSV export). */

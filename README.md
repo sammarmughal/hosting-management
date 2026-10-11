@@ -26,6 +26,7 @@ The app runs no background workers. It checks for due reminders and invoices whe
 | 11 | [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) | Neon + Hostinger Node.js, daily cron, go-live, backups |
 | 12 | [docs/12-DESIGN-DIRECTION.md](docs/12-DESIGN-DIRECTION.md) | Visual quality bar (wins on visuals) |
 | 13 | [docs/13-INVOICES-AND-SHARING.md](docs/13-INVOICES-AND-SHARING.md) | Invoices, PDF, public links, sharing, currency (wins on these) |
+| — | [docs/USER-GUIDE.md](docs/USER-GUIDE.md) | Owner's guide in simple English: daily routine, clients, invoices, colours, failed emails |
 | — | [docs/ui-review.md](docs/ui-review.md) | UI review log, including the one-month owner walkthrough |
 | — | [CLAUDE.md](CLAUDE.md) | Rules for the AI coding assistant |
 
@@ -43,12 +44,12 @@ npm run dev                     # http://localhost:3000
 
 With `SEED_DEMO=1` the demo admin is `rehman` / `Renewals2026!` (**development only**; never seed demo data in production). The first sign-in asks you to scan a QR code with an authenticator app and to save the recovery codes.
 
-For a real install, skip `SEED_DEMO`, then create the single admin from the command line (there is no sign-up page):
+For **production**, don't seed anything: `npm run setup:prod -- --env-file .env.production` checks the environment, applies the migrations and creates the single admin (from `ADMIN_USERNAME`/`ADMIN_EMAIL`/`ADMIN_PASSWORD` or by asking). No demo or seed data (docs/11 §2). Other admin scripts (there is no sign-up page):
 
 ```sh
-npm run db:seed                 # settings + templates only (idempotent)
-npm run create-admin            # prompts for username, email, password
+npm run create-admin            # prompts for username, email, password (-- --force replaces the admin)
 npm run reset-2fa               # emergency: turn 2FA off if the phone is lost
+npm run backup                  # pg_dump of DIRECT_URL to backups/hrm-YYYY-MM-DD-HHMM.dump (docs/11 §6)
 ```
 
 After pulling changes to `prisma/schema.prisma`, run `npm run db:migrate` (it applies the migration; with Prisma 7 also run `npx prisma generate` if the client wasn't regenerated).
