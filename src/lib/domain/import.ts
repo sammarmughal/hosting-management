@@ -1,11 +1,7 @@
 import { addOneYear, isISODate, todayPK } from "@/lib/domain/dates"
 import { normaliseDomain } from "@/lib/domain/hostname"
-import {
-  CURRENCIES,
-  newClientSchema,
-  type Currency,
-  type NewClientInput,
-} from "@/lib/domain/validation"
+import { DEFAULT_ENABLED_CURRENCIES, FALLBACK_CURRENCY } from "@/lib/domain/currency"
+import { newClientSchema, type NewClientInput } from "@/lib/domain/validation"
 
 export const IMPORT_HEADERS = [
   "client_name",
@@ -13,6 +9,7 @@ export const IMPORT_HEADERS = [
   "email",
   "phone",
   "address",
+  "client_currency",
   "domain",
   "plan_label",
   "start_date",
@@ -34,17 +31,20 @@ function date(value: string) {
   return match ? `${match[3]}-${match[2]}-${match[1]}` : value
 }
 export interface ImportCurrencies {
-  /** Used when the currency column is blank. */
-  default: Currency
-  enabled: readonly Currency[]
+  /** The app default: used when client_currency is blank. */
+  default: string
+  enabled: readonly string[]
 }
-const ALL_CURRENCIES: ImportCurrencies = { default: "PKR", enabled: CURRENCIES }
+const DEFAULT_CURRENCIES: ImportCurrencies = {
+  default: FALLBACK_CURRENCY,
+  enabled: DEFAULT_ENABLED_CURRENCIES,
+}
 
 export function previewImport(
   rows: ImportRow[],
   existingDomains: string[],
   today = todayPK(),
-  currencies: ImportCurrencies = ALL_CURRENCIES
+  currencies: ImportCurrencies = DEFAULT_CURRENCIES
 ): PreviewRow[] {
   const existing = new Set(existingDomains.map(normaliseDomain))
   const seen = new Set<string>()
@@ -54,6 +54,8 @@ export function previewImport(
     const renewalDate =
       date(get("renewal_date")) || (isISODate(startDate) ? addOneYear(startDate) : "")
     const domain = normaliseDomain(get("domain"))
+    // Blank client_currency = the app default; blank currency = the client's.
+    const clientCurrency = get("client_currency").toUpperCase() || currencies.default
     const input = {
       client: {
         name: get("client_name"),
@@ -61,6 +63,7 @@ export function previewImport(
         email: get("email"),
         phone: get("phone"),
         address: get("address"),
+        currency: clientCurrency,
         notes: get("notes"),
       },
       service: {
@@ -69,14 +72,17 @@ export function previewImport(
         startDate,
         renewalDate,
         chargeAmount: get("charge_amount"),
-        currency: get("currency").toUpperCase() || currencies.default,
+        currency: get("currency").toUpperCase() || clientCurrency,
         remindersEnabled: true,
         notes: "",
       },
     } as NewClientInput
     const parsed = newClientSchema.safeParse(input)
-    const currencyOff =
-      parsed.success && !currencies.enabled.includes(parsed.data.service.currency)
+    const currencyOff = parsed.success
+      ? [parsed.data.client.currency, parsed.data.service.currency].find(
+          (c) => !currencies.enabled.includes(c)
+        )
+      : undefined
     const duplicate = seen.has(domain)
     seen.add(domain)
     const messages = []
@@ -99,7 +105,7 @@ export function previewImport(
       message: !parsed.success
         ? parsed.error.issues.map((i) => i.message).join("; ")
         : currencyOff
-          ? `${parsed.data.service.currency} isn’t turned on in Settings`
+          ? `${currencyOff} isn’t turned on in Settings`
           : duplicate
           ? "Duplicate domain in this file"
           : messages.join("; ") || "Ready to import",

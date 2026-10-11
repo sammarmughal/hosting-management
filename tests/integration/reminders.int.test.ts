@@ -45,6 +45,7 @@ async function service(
       name: `Client d${days}`,
       email: client.email === undefined ? `d${days}@client.pk` : client.email,
       phone: client.phone === undefined ? "923001234567" : client.phone,
+      currency: "PKR",
       services: {
         create: {
           domain: `d${days >= 0 ? days : `m${-days}`}.pk`,

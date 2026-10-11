@@ -74,7 +74,7 @@ export function clientVars(
     renewal_date: formatDatePK(s.renewalDate),
     days_left: Math.abs(s.daysLeft),
     days_text: daysText(s.daysLeft),
-    amount: formatAmount(s.chargeAmount),
+    amount: formatAmount(s.chargeAmount, s.currency),
     currency: s.currency,
     business_name: b.businessName,
     business_phone: b.businessPhone,

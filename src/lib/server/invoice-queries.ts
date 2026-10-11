@@ -9,7 +9,7 @@ import {
   type BillToSnapshot,
   type SellerSnapshot,
 } from "@/lib/domain/invoices"
-import { formatMoney, totalsByCurrency, type CurrencyTotal } from "@/lib/domain/money"
+import { formatMoney, MONEY_SCALE, totalsByCurrency, type CurrencyTotal } from "@/lib/domain/money"
 import type { InvoiceParams } from "@/lib/list-filters"
 import { prisma } from "@/lib/server/db"
 import { fromDbDate, toDbDate } from "@/lib/server/db-dates"
@@ -45,7 +45,7 @@ function toRow(i: ListRecord, today: string): InvoiceRow {
     domain: i.service.domain,
     issueDate: fromDbDate(i.issueDate),
     dueDate: due,
-    total: i.total.toFixed(2),
+    total: i.total.toFixed(MONEY_SCALE),
     currency: i.currency,
     status: displayStatus(i.status, due, today),
     rawStatus: i.status,
@@ -132,7 +132,7 @@ export async function listInvoices(p: InvoiceParams): Promise<InvoiceList> {
   })
   const sums = (g: typeof invoicedSums) =>
     totalsByCurrency(
-      g.map((x) => ({ currency: x.currency, amount: (x._sum.total ?? 0).toFixed(2) })),
+      g.map((x) => ({ currency: x.currency, amount: (x._sum.total ?? 0).toFixed(MONEY_SCALE) })),
       s.defaultCurrency
     )
   return {
@@ -179,18 +179,18 @@ function documentData(i: DetailRecord, today: string): InvoiceDocumentData {
     periodStart: fromDbDate(i.periodStart),
     periodEnd: fromDbDate(i.periodEnd),
     currency: i.currency,
-    subtotal: i.subtotal.toFixed(2),
-    discount: i.discount.toFixed(2),
+    subtotal: i.subtotal.toFixed(MONEY_SCALE),
+    discount: i.discount.toFixed(MONEY_SCALE),
     taxRate: i.taxRate.toFixed(2),
-    taxAmount: i.taxAmount.toFixed(2),
-    total: i.total.toFixed(2),
+    taxAmount: i.taxAmount.toFixed(MONEY_SCALE),
+    total: i.total.toFixed(MONEY_SCALE),
     items: i.items.map((it) => ({
       id: it.id,
       description: it.description,
       periodLabel: it.periodLabel,
       quantity: it.quantity,
-      unitAmount: it.unitAmount.toFixed(2),
-      amount: it.amount.toFixed(2),
+      unitAmount: it.unitAmount.toFixed(MONEY_SCALE),
+      amount: it.amount.toFixed(MONEY_SCALE),
     })),
     billTo: i.billTo as unknown as BillToSnapshot,
     seller: i.seller as unknown as SellerSnapshot,

@@ -6,7 +6,13 @@ import "server-only"
 import type { Prisma, ReminderChannel } from "@/generated/prisma/client"
 import { addDays, formatDatePK } from "@/lib/domain/dates"
 import { adminWhatsappText } from "@/lib/domain/messages"
-import { formatMoney, toCents, totalsByCurrency, type CurrencyTotal } from "@/lib/domain/money"
+import {
+  formatMoney,
+  MONEY_SCALE,
+  toUnits,
+  totalsByCurrency,
+  type CurrencyTotal,
+} from "@/lib/domain/money"
 import { PAYMENT_METHOD_KEYS, paymentMethodLabel } from "@/lib/domain/validation"
 import { linkProvider } from "@/lib/domain/whatsapp"
 import type { DateRange, PaymentParams, ReminderLogParams } from "@/lib/list-filters"
@@ -219,7 +225,7 @@ export async function getDashboard(): Promise<DashboardData> {
       expected30: totalsByCurrency(
         expected.map((e) => ({
           currency: e.currency,
-          amount: (e._sum.chargeAmount ?? 0).toFixed(2),
+          amount: (e._sum.chargeAmount ?? 0).toFixed(MONEY_SCALE),
         })),
         s.defaultCurrency
       ),
@@ -295,7 +301,7 @@ const SORTS: Record<ServiceSort, (a: ServiceRow, b: ServiceRow) => number> = {
   name: (a, b) => a.clientName.localeCompare(b.clientName) || a.id - b.id,
   renewal: (a, b) => a.renewalDate.localeCompare(b.renewalDate) || a.id - b.id,
   charge: (a, b) =>
-    Math.sign(Number(toCents(b.chargeAmount) - toCents(a.chargeAmount))) || a.id - b.id,
+    Math.sign(Number(toUnits(b.chargeAmount) - toUnits(a.chargeAmount))) || a.id - b.id,
 }
 
 function cancelledLast(a: ServiceRow, b: ServiceRow) {
@@ -350,7 +356,7 @@ function toPaymentRow(p: PaymentRecord): PaymentRow {
     serviceId: p.serviceId,
     domain: p.service.domain,
     clientName: p.service.client.name,
-    amount: p.amount.toFixed(2),
+    amount: p.amount.toFixed(MONEY_SCALE),
     currency: p.currency,
     paidOn: fromDbDate(p.paidOn),
     method: paymentMethodLabel(p.method),
@@ -391,6 +397,7 @@ export async function getClient(id: number): Promise<ClientPageData | null> {
     email: client.email,
     phone: client.phone,
     address: client.address,
+    currency: client.currency,
     notes: client.notes,
     services,
   }
@@ -589,7 +596,7 @@ export async function listPayments(filters: PaymentParams): Promise<PaymentList>
     pageSize: PAGE_SIZE,
     totalAll,
     totals: totalsByCurrency(
-      sums.map((x) => ({ currency: x.currency, amount: (x._sum.amount ?? 0).toFixed(2) })),
+      sums.map((x) => ({ currency: x.currency, amount: (x._sum.amount ?? 0).toFixed(MONEY_SCALE) })),
       s.defaultCurrency
     ),
   }

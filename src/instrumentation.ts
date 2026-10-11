@@ -3,7 +3,7 @@
 // (missing, http, or localhost). See docs/11 §2.
 //
 // ALLOW_LOCAL_APP_URL=1 lets the production build run on this machine
-// (`npm start`, the Playwright tests). Never set it on Vercel or Hostinger.
+// (`npm start`, the Playwright tests). Never set it on Hostinger.
 import { appUrlProblem } from "@/lib/domain/app-url"
 
 export function register() {

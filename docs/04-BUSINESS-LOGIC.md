@@ -29,7 +29,7 @@ export function diffDays(a: ISODate, b: ISODate): number {
   return Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86_400_000);
 }
 
-// Today in Asia/Karachi as ISO date (server runs in UTC on Vercel)
+// Today in Asia/Karachi as ISO date (the server may run in UTC)
 export function todayPK(now = new Date()): ISODate {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi' }).format(now); // 'YYYY-MM-DD'
 }
@@ -161,7 +161,7 @@ Server Action `sendReminderEmailAction(id)`
 3. Nodemailer send → on success: `status='sent', sent_at=now`. On failure: `status='failed', attempts++, last_error=msg`, plus a notification of type `email_failed`.
 4. Write an audit log entry. Return `{ ok, status, error? }`.
 
-**"Send all emails"** is done in the browser: the client component loops through the pending client-email IDs and calls the action above **one at a time** (this also keeps each request well inside Vercel's function time limit), showing progress ("Sending 4 / 11…"). The admin summary is sent at the end.
+**"Send all emails"** is done in the browser: the client component loops through the pending client-email IDs and calls the action above **one at a time** (this also keeps each request short), showing progress ("Sending 4 / 11…"). The admin summary is sent at the end.
 
 ### 5.2 Admin summary email
 Server Action `sendAdminSummaryEmailAction()`
@@ -206,7 +206,7 @@ COMMIT
 | Expiring ≤ 30 days | `0 <= days_left <= T_o` |
 | Urgent ≤ 7 days | `0 <= days_left <= T_r` |
 | Expired | `days_left < 0` and active |
-| Expected income (30 days) | sum of `charge_amount` where `0 <= days_left <= 30`, grouped by currency |
+| Expected income (30 days) | sum of `charge_amount` where `0 <= days_left <= 30`, grouped by currency (never added across currencies; there is no conversion) |
 
 ## 8. Validation rules
 
@@ -216,20 +216,22 @@ COMMIT
 | client.email | optional, valid email, ≤190 |
 | client.phone | optional, must normalise to 10–15 digits (see `08-MESSAGES.md`) |
 | client | at least one of email or phone |
+| client.currency | required, one of the enabled currencies (ISO 4217). New clients default to the app's default currency |
 | service.domain | required, normalised, valid hostname (`/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.[a-z0-9-]{1,63})+$/`) |
 | service.start_date | required, valid date, not more than 1 day in the future (warn only) |
 | service.renewal_date | required, > start_date |
-| service.charge_amount | required, ≥ 0, ≤ 99,999,999.99 |
-| service.currency | `PKR`, `USD`, `AED`, `GBP`, `EUR` (configurable list) |
-| payment.amount | required, > 0 |
+| service.charge_amount | required, ≥ 0, up to 10 digits before the point, and no more decimals than the currency allows (from `Intl`: JPY/PKR 0, USD 2, KWD 3) |
+| service.currency | one of the enabled currencies (Settings; PKR, USD and AED on by default). Starts as the client's currency and can be overridden |
+| payment.amount | required, > 0, same decimal rule as the charge. The currency is the service's |
 | payment.paid_on | required, ≤ today + 1 |
 
 ## 9. CSV import
 
 Template headers:
 ```
-client_name,company,email,phone,domain,plan_label,start_date,renewal_date,charge_amount,currency,notes
+client_name,company,email,phone,address,client_currency,domain,plan_label,start_date,renewal_date,charge_amount,currency,notes
 ```
+- `client_currency` is optional. Blank = the app's default currency. A blank service `currency` means "the client's currency". The services export also includes `client_currency`.
 - Dates are accepted as `YYYY-MM-DD` or `DD/MM/YYYY`.
 - An empty `renewal_date` becomes start + 1 year.
 - Rows with the same `client_name` + (`email` or `phone`) are grouped into **one client** with several services.

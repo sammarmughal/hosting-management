@@ -14,7 +14,7 @@ Tick items as they are done. Each phase ends with a **Done when** check. Estimat
 | 7 | Renewals, payments, notifications | 1 day |
 | 8 | Import/export + settings | 1.5 days |
 | 9 | Testing + hardening | 1.5 days |
-| 10 | Deploy (Vercel, and optionally Hostinger) + handover | 1 day |
+| 10 | Deploy (Hostinger Node.js + Neon) + handover | 1 day |
 | | **Total** | **about 2.5–3 weeks** |
 
 ---
@@ -49,14 +49,14 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 - [ ] Pages (UI spec §4 and §7.3): login, 2fa, 2fa/setup, dashboard, clients, clients/new, clients/[id], clients/[id]/edit, reminders, payments, notifications, import (3 steps with a client-side CSV preview), settings (5 tabs), not-found and error.
 - [ ] Test at 360, 390, 768, 1024 and 1440 px.
 - [ ] Accessibility pass: keyboard navigation, focus rings, labels, dialog focus trap.
-- [ ] Deploy the Phase 1 build to a **protected Vercel preview** and share it with the owner for review.
+- [ ] Show the Phase 1 build to the owner for review: run it locally, or on a separate Hostinger staging subdomain (never on production data).
 
 **Done when:** every screen works with mock data on phone and desktop, timers tick with the correct colours, WhatsApp links open correctly on a phone, and the owner approves the look.
 
 ---
 
 ## Phase 2 — Database + Prisma
-- [ ] Create a Neon project (region close to the Vercel region, e.g. Singapore or Frankfurt). Create a `dev` branch database for local work.
+- [ ] Create a Neon project (region close to the Hostinger server, e.g. Singapore or Frankfurt). Create a `dev` branch database for local work.
 - [x] `npm i prisma @prisma/client`, then `npx prisma init`. Paste the schema from `03-DATABASE.md`.
 - [x] `npx prisma migrate dev --name init`.
 - [x] `prisma/seed.ts`: settings + default templates (+ demo data when `SEED_DEMO=1`).
@@ -139,7 +139,7 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 ---
 
 ## Phase 10 — Deploy + handover
-- [ ] Follow `11-DEPLOYMENT.md` (Vercel), and optionally the Hostinger section.
+- [ ] Follow `11-DEPLOYMENT.md`: Neon (§1), the Hostinger Node.js app at `https://renewals.abdulrehmaan.net` (§3) and the hPanel cron job for the daily check (§4).
 - [ ] Import the real client list and confirm the numbers with the owner.
 - [ ] Walk the owner through the routine (below).
 - [ ] Hand over: the URL, username, 2FA set up on the owner's phone, and the recovery codes saved offline.

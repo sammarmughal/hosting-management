@@ -3,8 +3,9 @@ import { notFound } from "next/navigation"
 
 import { ClientForm } from "@/components/client-form"
 import { PageHeader } from "@/components/page-header"
+import { currencyOptions } from "@/lib/domain/currency"
 import { formatPhone } from "@/lib/domain/whatsapp"
-import { getClient } from "@/lib/data"
+import { getClient, getSettings } from "@/lib/data"
 
 type Props = { params: Promise<{ id: string }> }
 
@@ -20,19 +21,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function EditClientPage({ params }: Props) {
-  const client = await load(params)
+  const [client, settings] = await Promise.all([load(params), getSettings()])
   return (
     <>
       <PageHeader title="Edit client" description={client.name} />
       <ClientForm
         mode="edit"
         clientId={client.id}
+        currencies={currencyOptions(settings.enabledCurrencies, client.currency)}
         defaultValues={{
           name: client.name,
           company: client.company ?? "",
           email: client.email ?? "",
           phone: client.phone ? formatPhone(client.phone) : "",
           address: client.address ?? "",
+          currency: client.currency,
           notes: client.notes ?? "",
         }}
       />

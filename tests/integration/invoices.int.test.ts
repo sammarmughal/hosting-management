@@ -54,6 +54,7 @@ async function service(
       name: `Client d${days}`,
       company: "Noor Dental Clinic",
       address: "Shop 3, Jail Road, Lahore",
+      currency: opts.currency ?? "PKR",
       email: opts.email === undefined ? `d${days}@client.pk` : opts.email,
       phone: "923001234567",
       services: {
@@ -139,7 +140,8 @@ describe.skipIf(!enabled)("invoices (docs/13 §2–§5)", () => {
       company: "Noor Dental Clinic",
       address: "Shop 3, Jail Road, Lahore",
     })
-    expect(inv).toMatchObject({ subtotal: "8750.00", taxAmount: "1487.50", total: "10237.50" })
+    // PKR has no minor unit in Intl, so 17% of 8,750 (1,487.50) rounds to 1,488.
+    expect(inv).toMatchObject({ subtotal: "8750.000", taxAmount: "1488.000", total: "10238.000" })
 
     // Later settings changes don't touch the snapshot.
     await updateSettings({ business_name: "Renamed Business" })
@@ -155,12 +157,24 @@ describe.skipIf(!enabled)("invoices (docs/13 §2–§5)", () => {
     expect((await updateFromService(res.id)).ok).toBe(true)
     inv = await getInvoice(res.id)
     expect(inv?.number).toBe(res.number)
-    expect(inv?.total).toBe("10530.00")
+    expect(inv?.total).toBe("10530.000")
     expect(inv?.events.map((e) => e.type)).toContain("updated")
 
     // Manual create again is idempotent.
     const again = await createInvoiceNow(s.id)
     expect(again).toMatchObject({ id: res.id, created: false })
+  })
+
+  it("rounds tax to each currency's minor unit: USD cents, KWD fils (§6)", async () => {
+    await updateSettings({ tax_enabled: "1", tax_rate: "17" })
+    const usd = await service(10, { currency: "USD", amount: "49.99" })
+    const kwd = await service(11, { currency: "KWD", amount: "12.345" })
+    const a = await createInvoiceNow(usd.id)
+    const b = await createInvoiceNow(kwd.id)
+    if ("error" in a || "error" in b) throw new Error("create failed")
+    // 17% of 49.99 = 8.4983 → 8.50; 17% of 12.345 = 2.09865 → 2.099
+    expect(await getInvoice(a.id)).toMatchObject({ currency: "USD", taxAmount: "8.500", total: "58.490" })
+    expect(await getInvoice(b.id)).toMatchObject({ currency: "KWD", taxAmount: "2.099", total: "14.444" })
   })
 
   it("renewing marks the cycle's invoice paid and links the payment (§5)", async () => {
@@ -197,7 +211,7 @@ describe.skipIf(!enabled)("invoices (docs/13 §2–§5)", () => {
 
     const list = await listInvoices({ q: "", status: "all", currency: "", from: "", to: "", page: 1 })
     expect(list.total).toBe(2)
-    expect(list.invoiced).toEqual([{ currency: "USD", total: "49.99" }])
+    expect(list.invoiced).toEqual([{ currency: "USD", total: "49.990" }])
     const voidOnly = await listInvoices({ q: "", status: "void", currency: "", from: "", to: "", page: 1 })
     expect(voidOnly.rows.map((r) => r.number)).toEqual(["INV-2026-0001"])
   })

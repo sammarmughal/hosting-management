@@ -7,7 +7,7 @@ Priority of docs: on invoices, sharing and currency, **this file wins**. On visu
 ## 0. What the client asked for
 
 1. Make the existing UI properly functional (real data, real emails, real reminders). No redesign.
-2. Currency handling (see §6; confirm the exact requirement with the client).
+2. Currency handling: each client has their own currency, no conversion (see §6; confirmed with the client on 11 Oct 2026).
 3. Send a reminder to the customer on **both email and WhatsApp with a single click**.
 4. Create a proper **invoice** for every renewal. It is sent along with the reminder on email and WhatsApp, and can be **downloaded as a PDF**.
 5. The invoice must be available in the system **30 or 15 days before the renewal date** (configurable).
@@ -18,7 +18,8 @@ Priority of docs: on invoices, sharing and currency, **this file wins**. On visu
 A `wa.me` link can only open WhatsApp with **pre-filled text**. It cannot attach a PDF and cannot send by itself; the owner still presses Send inside WhatsApp. So:
 
 - **Now (free, no approval needed):** the WhatsApp message contains a **secure invoice link** (`https://<app>/i/<token>`). The customer taps it, sees the invoice and downloads the PDF. Email gets the PDF as a real attachment plus the same link.
-- **Later (optional):** WhatsApp Business Cloud API (Meta) can send the PDF itself fully automatically. It needs Meta business verification, an approved message template with a document header, and has per-conversation cost. Build sending behind a `WhatsAppProvider` interface with a `link` implementation now, so a `cloud` implementation can be added later without touching the UI.
+- **Decision (11 Oct 2026): link-based only, no paid API for now.** The rest of this bullet stays as background in case that changes.
+- **Later (optional, not planned):** WhatsApp Business Cloud API (Meta) can send the PDF itself fully automatically. It needs Meta business verification, an approved message template with a document header, and has per-conversation cost. Build sending behind a `WhatsAppProvider` interface with a `link` implementation now, so a `cloud` implementation can be added later without touching the UI.
 
 "Single click for both" therefore means: one click sends the email in the background **and** opens WhatsApp with the message ready.
 
@@ -66,12 +67,29 @@ A `wa.me` link can only open WhatsApp with **pre-filled text**. It cannot attach
 
 ## 6. Currency
 
-> TODO: confirm with the client exactly what was asked ("jo currency wala main ne bola hai"). Default implementation below.
+Confirmed with the client on 11 Oct 2026: **no conversion. Each client has their own currency** (a Pakistani client pays in PKR, a UAE client in AED).
 
-- Each service has its own currency. Settings has an enabled-currencies list (default PKR, USD, AED, SAR, GBP, EUR) and a default currency for new services.
-- Invoices use the service's currency.
-- Totals are **grouped per currency everywhere** (dashboard stat "Expected in 30 days", payments summary strip, invoice list). Different currencies are never added together. No exchange-rate conversion unless the client asks.
-- Formatting through `money.ts`: `PKR 6,500`, `USD 49.99` (no decimals when .00).
+**Where the currency lives**
+- **Client:** `clients.currency` (ISO 4217, required). It starts as the app default when the client is added, and is shown on the client form and the client page.
+- **Service:** `services.currency`. A new service starts in its client's currency, and can be changed on the service form (e.g. one USD service for a PKR client).
+- **Invoice and payment:** they take the service's currency, so for most clients that's the client's currency. Changing a client's currency later does not change existing services, invoices or payments.
+
+**Settings → Business**
+- **Currencies:** any ISO 4217 currency can be turned on from a searchable picker (code and name, e.g. "AED · United Arab Emirates Dirham"). PKR, USD and AED are on for a new install. The client and service forms offer only the enabled currencies (plus a record's current one, so an edit never loses it).
+- A currency used by **any client or service can't be turned off**. Its row is locked and says why ("Used by 2 clients and 3 services"), with the same reason in a tooltip; the server refuses it too. The default currency can't be removed either.
+- **Default currency:** what new clients start in (and the fallback for import).
+
+**Amounts and formatting** (`lib/domain/currency.ts`, `lib/domain/money.ts`)
+- Currency names and decimal places come from `Intl`: `PKR 6,500`, `JPY 150,000` (0 decimals), `USD 49.99`, `KWD 12.500` (3 decimals). No decimals are shown when the fraction is zero. An amount may not have more decimals than its currency allows ("PKR amounts can’t have decimals"); a value saved earlier with more is shown in full, never rounded away.
+- Money is stored as `DECIMAL(15,3)` and handled as integer thousandths, never floats. Invoice tax is rounded to the currency's minor unit.
+- Totals are **grouped per currency everywhere** (dashboard stat "Expected in 30 days", payments summary strip, invoice list, admin summary). Different currencies are never added together, and there is no exchange-rate conversion.
+
+**Import and export (CSV)**
+- `client_currency` (after `address`): the client's currency. Blank = the app default.
+- `currency`: the service's currency. Blank = the client's currency.
+- Both must be turned on in Settings, otherwise the row is an error. A row for an existing client (same name + email or phone) keeps that client's currency. The services export writes both columns, and amounts with the currency's decimals.
+
+**Existing data:** migration `client_currency_and_money_scale` gave every client the currency most of their services use (ties go to the app default, then alphabetical), or the app default when they have no services.
 
 ## 7. Invoice PDF
 
@@ -121,7 +139,7 @@ A `wa.me` link can only open WhatsApp with **pre-filled text**. It cannot attach
 - **Client detail:** an "Invoices" tab; each service card shows the current-cycle invoice chip and a Share invoice button.
 - **Dashboard:** queue rows get the invoice chip and "Send email + WhatsApp".
 - **Settings → Invoices** (new section): prefix, next number (read-only once invoices exist), lead days (15 / 30 / custom), logo upload, NTN, payment instructions fields, footer note, tax on/off + rate.
-- **Settings → Currency** (new section or part of Business): enabled currencies, default currency.
+- **Settings → Business → Currencies:** enabled currencies (searchable ISO 4217 picker, in-use ones locked) and the default currency for new clients (§6).
 
 ## 12. Tests
 

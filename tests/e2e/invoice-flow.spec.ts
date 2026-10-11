@@ -3,25 +3,13 @@
 // download is application/pdf → mark as paid → renewal +1 year, invoice paid.
 import fs from "node:fs"
 
-import { expect, test, type Page } from "@playwright/test"
-import { generate } from "otplib"
+import { expect, test } from "@playwright/test"
 
 import { addDays, addOneYear, formatDatePK, todayPK } from "../../src/lib/domain/dates"
 import { E2E } from "./e2e-config"
+import { signIn } from "./sign-in"
 
 const DOMAIN = "e2e-noordental.pk"
-
-async function signIn(page: Page) {
-  await page.goto("/login")
-  await page.fill("#identifier", E2E.username)
-  await page.fill("#password", E2E.password)
-  await page.getByRole("button", { name: "Sign in" }).click()
-  await page.waitForURL(/\/2fa$/)
-  await page.locator('input[inputmode="numeric"]').first().click()
-  await page.keyboard.type(await generate({ secret: E2E.totpSecret }))
-  await page.getByRole("button", { name: "Verify" }).click()
-  await page.waitForURL(/\/dashboard$/)
-}
 
 function mailbox(): { rcpt: string[]; data: string }[] {
   return fs

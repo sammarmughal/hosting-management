@@ -1,7 +1,7 @@
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import { formatDatePK } from "@/lib/domain/dates"
 import { hasPaymentInstructions } from "@/lib/domain/invoices"
-import { formatAmount, formatMoney, toCents } from "@/lib/domain/money"
+import { formatAmount, formatMoney, toUnits } from "@/lib/domain/money"
 import { formatPhone } from "@/lib/domain/whatsapp"
 import { cn } from "@/lib/utils"
 import type { InvoiceDocumentData } from "@/types/view"
@@ -20,8 +20,8 @@ export function InvoiceDocument({
 }) {
   const s = inv.seller
   const b = inv.billTo
-  const hasDiscount = toCents(inv.discount) > 0n
-  const hasTax = toCents(inv.taxAmount) > 0n
+  const hasDiscount = toUnits(inv.discount) > 0n
+  const hasTax = toUnits(inv.taxAmount) > 0n
   const payment = hasPaymentInstructions(s)
 
   return (
@@ -107,10 +107,10 @@ export function InvoiceDocument({
 
         {/* 4. Totals */}
         <dl className="mt-4 ml-auto flex w-full max-w-72 flex-col gap-1.5 text-sm">
-          <TotalRow label="Subtotal">{formatAmount(inv.subtotal)}</TotalRow>
-          {hasDiscount && <TotalRow label="Discount">−{formatAmount(inv.discount)}</TotalRow>}
+          <TotalRow label="Subtotal">{formatAmount(inv.subtotal, inv.currency)}</TotalRow>
+          {hasDiscount && <TotalRow label="Discount">−{formatAmount(inv.discount, inv.currency)}</TotalRow>}
           {hasTax && (
-            <TotalRow label={`Tax (${formatAmount(inv.taxRate)}%)`}>{formatAmount(inv.taxAmount)}</TotalRow>
+            <TotalRow label={`Tax (${formatAmount(inv.taxRate)}%)`}>{formatAmount(inv.taxAmount, inv.currency)}</TotalRow>
           )}
           {/* One continuous rule above the total. */}
           <TotalRow label="Total" grand>

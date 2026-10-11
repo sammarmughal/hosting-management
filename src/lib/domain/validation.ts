@@ -2,9 +2,10 @@
 // so one schema validates both (docs/02 §1). Pure: `today` is passed in.
 import { z } from "zod"
 
+import { currencyDecimals, currencySchema } from "@/lib/domain/currency"
 import { addDays, isISODate, type ISODate } from "@/lib/domain/dates"
 import { isValidDomain, normaliseDomain } from "@/lib/domain/hostname"
-import { toCents } from "@/lib/domain/money"
+import { toUnits } from "@/lib/domain/money"
 import { normalisePhone } from "@/lib/domain/whatsapp"
 
 export const PAYMENT_METHODS = [
@@ -35,9 +36,23 @@ export function paymentMethodLabel(key: string): PaymentMethod {
   return found ?? "Other"
 }
 
-const AMOUNT_RE = /^\d{1,8}(\.\d{1,2})?$/
+/** Up to 10 digits before the point and 3 after (DECIMAL(15,3) leaves room for tax). */
+const AMOUNT_RE = /^\d{1,10}(\.\d{1,3})?$/
 
-/** "6,500" or "6500.50" → "6500.50"-style string. Must be > 0 and ≤ 99,999,999.99. */
+/**
+ * Null when `amount` fits the currency's minor unit, else the message:
+ * "PKR amounts can’t have decimals", "USD amounts have at most 2 decimals".
+ */
+export function amountDecimalsIssue(amount: string, currency: string): string | null {
+  const used = (/\.(\d+)$/.exec(amount)?.[1] ?? "").replace(/0+$/, "").length
+  const allowed = currencyDecimals(currency)
+  if (used <= allowed) return null
+  return allowed === 0
+    ? `${currency} amounts can’t have decimals`
+    : `${currency} amounts have at most ${allowed} decimals`
+}
+
+/** "6,500" or "6500.50" → "6500.50"-style string. Must be > 0. */
 export const paymentAmount = z
   .string()
   .trim()
@@ -47,16 +62,24 @@ export const paymentAmount = z
       .string()
       .min(1, "Enter the amount paid")
       .regex(AMOUNT_RE, "Enter an amount like 6500 or 6500.50")
-      // Zod keeps running checks after a failure, so guard before toCents().
-      .refine((s) => !AMOUNT_RE.test(s) || toCents(s) > 0n, "Amount must be more than 0")
+      // Zod keeps running checks after a failure, so guard before toUnits().
+      .refine((s) => !AMOUNT_RE.test(s) || toUnits(s) > 0n, "Amount must be more than 0")
   )
 
-/** Renew / Mark paid (docs/04 §6, docs/06 §4.8). */
-export function renewSchema(today: ISODate) {
+/**
+ * Renew / Mark paid (docs/04 §6, docs/06 §4.8). `currency` is the service's:
+ * the amount may not have more decimals than it allows.
+ */
+export function renewSchema(today: ISODate, currency?: string) {
   return z
     .object({
       serviceId: z.number().int().positive(),
-      amount: paymentAmount,
+      amount: currency
+        ? paymentAmount.superRefine((s, ctx) => {
+            const issue = AMOUNT_RE.test(s) ? amountDecimalsIssue(s, currency) : null
+            if (issue) ctx.addIssue({ code: "custom", message: issue })
+          })
+        : paymentAmount,
       paidOn: z
         .string()
         .refine(isISODate, "Enter a valid date")
@@ -73,20 +96,6 @@ export type RenewInput = z.input<ReturnType<typeof renewSchema>>
 export type RenewData = z.output<ReturnType<typeof renewSchema>>
 
 /* Clients and services (docs/04 §8) --------------------------------- */
-
-export const CURRENCIES = ["PKR", "USD", "AED", "SAR", "GBP", "EUR"] as const
-export type Currency = (typeof CURRENCIES)[number]
-
-/**
- * Currencies a service form offers: the ones enabled in settings, plus the
- * service's current one if it has since been turned off (so editing keeps it).
- */
-export function currencyOptions(
-  enabled: readonly Currency[],
-  current?: string
-): Currency[] {
-  return CURRENCIES.filter((c) => enabled.includes(c) || c === current)
-}
 
 const text = (max: number) =>
   z
@@ -121,6 +130,8 @@ export const clientSchema = z
       ),
     /** Optional; printed under the client on invoices (Bill to). */
     address: text(300).optional(),
+    /** New services (and so their invoices and payments) start in it. */
+    currency: currencySchema,
     notes: text(2000),
   })
   .strict()
@@ -139,6 +150,7 @@ export const clientSchema = z
     email: c.email || null,
     phone: c.phone ? normalisePhone(c.phone) : null,
     address: c.address || null,
+    currency: c.currency,
     notes: c.notes || null,
   }))
 
@@ -168,7 +180,8 @@ export const serviceSchema = z
     startDate: z.string().refine(isISODate, "Enter a valid date"),
     renewalDate: z.string().refine(isISODate, "Enter a valid date"),
     chargeAmount,
-    currency: z.enum(CURRENCIES, { message: "Choose a currency" }),
+    /** Starts as the client's currency; can be overridden per service. */
+    currency: currencySchema,
     remindersEnabled: z.boolean(),
     notes: text(2000),
   })
@@ -178,6 +191,11 @@ export const serviceSchema = z
       !isISODate(s.startDate) || !isISODate(s.renewalDate) || s.renewalDate > s.startDate,
     { path: ["renewalDate"], message: "Renewal date must be after the start date" }
   )
+  .superRefine((s, ctx) => {
+    if (!AMOUNT_RE.test(s.chargeAmount)) return
+    const issue = amountDecimalsIssue(s.chargeAmount, s.currency)
+    if (issue) ctx.addIssue({ code: "custom", path: ["chargeAmount"], message: issue })
+  })
   .transform((s) => ({ ...s, planLabel: s.planLabel || null, notes: s.notes || null }))
 
 export const newClientSchema = z

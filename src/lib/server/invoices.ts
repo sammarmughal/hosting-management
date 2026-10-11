@@ -13,7 +13,8 @@ import {
   type BillToSnapshot,
   type SellerSnapshot,
 } from "@/lib/domain/invoices"
-import { formatMoney } from "@/lib/domain/money"
+import { currencyDecimals } from "@/lib/domain/currency"
+import { formatMoney, MONEY_SCALE } from "@/lib/domain/money"
 import { audit } from "@/lib/server/audit"
 import { today as clockToday } from "@/lib/server/clock"
 import { randomToken } from "@/lib/server/crypto"
@@ -81,9 +82,11 @@ type ServiceForInvoice = Prisma.ServiceGetPayload<{ include: { client: true } }>
 
 /** Items and totals from the service as it is now. */
 function amountsFrom(service: ServiceForInvoice, s: AppSettings, periodStart: ISODate, periodEnd: ISODate) {
-  const unit = service.chargeAmount.toFixed(2)
+  const unit = service.chargeAmount.toFixed(MONEY_SCALE)
   const totals = invoiceTotals([{ quantity: 1, unitAmount: unit }], {
     taxRate: s.invoices.taxEnabled ? s.invoices.taxRate : "0",
+    // Tax rounds to the currency's minor unit (PKR 0, USD 2, KWD 3).
+    decimals: currencyDecimals(service.currency),
   })
   return {
     currency: service.currency,

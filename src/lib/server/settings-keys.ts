@@ -2,7 +2,8 @@
 // lib/server/settings.ts, so it has no server-only import.
 //
 // Additions to the docs' table:
-// - enabled_currencies: currencies offered on the service form (currency work).
+// - enabled_currencies: ISO 4217 codes offered on the client and service
+//   forms, comma-separated (docs/13 §6).
 // - smtp_encryption (SSL | TLS | None) replaces the boolean smtp_secure,
 //   because the approved Email form offers three choices.
 import { DEFAULT_STAGES } from "@/lib/domain/stages"
@@ -13,8 +14,8 @@ export const SETTING_DEFAULTS = {
   admin_email: "",
   admin_whatsapp: "",
   default_currency: "PKR",
-  // docs/13 §6 default list.
-  enabled_currencies: "PKR,USD,AED,SAR,GBP,EUR",
+  // docs/13 §6: PKR, USD and AED on for a new install.
+  enabled_currencies: "AED,PKR,USD",
   threshold_orange_days: "30",
   threshold_red_days: "7",
   reminder_stages: DEFAULT_STAGES,

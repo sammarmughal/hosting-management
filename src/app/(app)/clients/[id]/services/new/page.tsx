@@ -4,7 +4,7 @@ import { notFound } from "next/navigation"
 import { ServiceForm } from "@/components/client-form"
 import { PageHeader } from "@/components/page-header"
 import { addOneYear, todayPK } from "@/lib/domain/dates"
-import { currencyOptions } from "@/lib/domain/validation"
+import { currencyOptions } from "@/lib/domain/currency"
 import { getClient, getSettings } from "@/lib/data"
 
 type Props = { params: Promise<{ id: string }> }
@@ -29,14 +29,15 @@ export default async function NewServicePage({ params }: Props) {
       <ServiceForm
         mode="new"
         clientId={client.id}
-        currencies={currencyOptions(settings.enabledCurrencies)}
+        currencies={currencyOptions(settings.enabledCurrencies, client.currency)}
         defaultValues={{
           domain: "",
           planLabel: "",
           startDate: today,
           renewalDate: addOneYear(today),
           chargeAmount: "",
-          currency: settings.defaultCurrency,
+          // New services start in the client's currency (docs/13 §6).
+          currency: client.currency,
           remindersEnabled: true,
           notes: "",
         }}

@@ -103,11 +103,13 @@ The 6th failure in 15 min is blocked, and the block lifts after 15 min (fake clo
 ### Import / export
 - [ ] The template imports. Bad rows are flagged and not imported. Two rows with the same client give one client with 2 services.
 - [ ] A cell starting with `=` in the export is prefixed with `'`.
+- [ ] A blank `client_currency` gives the app default currency, and a blank service `currency` gives the client's currency.
 
 ### Hosting
-- [ ] Works on the Vercel production URL.
-- [ ] (If used) works on Hostinger Node.js with the same env vars and database.
-- [ ] The server timezone is UTC on both, and dates and colours are still correct (PK midnight).
+- [ ] Works on the production URL `https://renewals.abdulrehmaan.net` (Hostinger Node.js + Neon).
+- [ ] The hPanel cron job runs the daily check at 09:00 PKT, and a call without the right `CRON_SECRET` is rejected (docs/11 §4).
+- [ ] Test changes locally, or on a separate Hostinger staging subdomain against a Neon branch database, never on production data.
+- [ ] If the server timezone is UTC, dates and colours are still correct (PK midnight).
 
 ### Responsive / browsers
 - [ ] 360 px (Android), 390 px (iPhone), 768 px, 1024 px and 1440 px.

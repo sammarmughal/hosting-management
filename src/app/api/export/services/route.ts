@@ -1,5 +1,6 @@
 import { toCsv } from "@/lib/domain/csv"
 import { todayPK } from "@/lib/domain/dates"
+import { plainAmount } from "@/lib/domain/money"
 import { exportServices } from "@/lib/data"
 import { audit } from "@/lib/server/audit"
 import { requireAdmin } from "@/lib/server/session"
@@ -19,11 +20,12 @@ const COLUMNS: {
   // Digits only: a leading "+" would get the formula-guard ' prefix.
   { header: "phone", value: (s) => s.phone },
   { header: "address", value: (s) => s.address },
+  { header: "client_currency", value: (s) => s.clientCurrency },
   { header: "domain", value: (s) => s.domain },
   { header: "plan_label", value: (s) => s.planLabel },
   { header: "start_date", value: (s) => s.startDate },
   { header: "renewal_date", value: (s) => s.renewalDate },
-  { header: "charge_amount", value: (s) => s.chargeAmount },
+  { header: "charge_amount", value: (s) => plainAmount(s.chargeAmount, s.currency) },
   { header: "currency", value: (s) => s.currency },
   { header: "status", value: (s) => s.status },
   { header: "days_left", value: (s) => s.daysLeft },

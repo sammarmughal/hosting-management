@@ -1,5 +1,6 @@
 import { toCsv } from "@/lib/domain/csv"
 import { todayPK } from "@/lib/domain/dates"
+import { plainAmount } from "@/lib/domain/money"
 import { exportPayments } from "@/lib/data"
 import { parsePaymentParams } from "@/lib/list-filters"
 import { audit } from "@/lib/server/audit"
@@ -16,7 +17,7 @@ const COLUMNS: {
   { header: "paid_on", value: (p) => p.paidOn },
   { header: "client_name", value: (p) => p.clientName },
   { header: "domain", value: (p) => p.domain },
-  { header: "amount", value: (p) => p.amount },
+  { header: "amount", value: (p) => plainAmount(p.amount, p.currency) },
   { header: "currency", value: (p) => p.currency },
   { header: "method", value: (p) => p.method },
   { header: "reference", value: (p) => p.reference },

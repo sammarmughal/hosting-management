@@ -20,6 +20,8 @@ export interface ServiceRow {
   phone?: string | null // phone = normalised digits
   /** Client address (optional). */
   address?: string | null
+  /** The client's own currency (new services start in it). */
+  clientCurrency?: string
   domain: string
   planLabel?: string | null
   startDate: ISODate
@@ -150,6 +152,8 @@ export interface ClientDetail {
   email?: string | null
   phone?: string | null // normalised digits
   address?: string | null
+  /** ISO 4217; new services, invoices and payments for this client start in it. */
+  currency: string
   notes?: string | null
   services: ServiceRow[]
 }

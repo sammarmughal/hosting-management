@@ -46,7 +46,7 @@ describe("/api/cron/check (scheduled daily check)", () => {
     expect(runCheck).not.toHaveBeenCalled()
   })
 
-  it("runs the same forced, idempotent check for GET (Vercel Cron) and POST", async () => {
+  it("runs the same forced, idempotent check for POST (the hPanel curl job) and GET", async () => {
     for (const h of [GET, POST]) {
       const res = await call(h, `Bearer ${SECRET}`)
       expect(res.status).toBe(200)

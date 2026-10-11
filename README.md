@@ -3,9 +3,9 @@
 A secure, single-admin web app for tracking which clients' hosting (on our Hostinger plan) is due for its yearly renewal. It shows colour-coded live countdowns, creates an **invoice** for every renewal, and sends reminders and invoices to clients by **email** (PDF attached) and **WhatsApp** (with a secure invoice link).
 
 **Approach: "check on login" plus one daily scheduled check.**
-The app runs no background workers. It checks for due reminders and invoices when the admin opens the dashboard, on **Check now**, and once a day at 09:00 PKT from Vercel Cron (or a Hostinger cron entry). Emails go out with one click (auto-send can be turned on). WhatsApp uses free click-to-chat links (`wa.me`) with a pre-filled message, so there is no Meta API, no extra number and no per-message cost.
+The app runs no background workers. It checks for due reminders and invoices when the admin opens the dashboard, on **Check now**, and once a day at 09:00 PKT from an hPanel cron job. Emails go out with one click (auto-send can be turned on). WhatsApp uses free click-to-chat links (`wa.me`) with a pre-filled message, so there is no Meta API, no extra number and no per-message cost.
 
-**Stack: Next.js 16 + TypeScript + Tailwind/shadcn + Prisma 7 + PostgreSQL (Neon).** Deployed on **Vercel**, and it also runs on **Hostinger Node.js hosting** (`output: "standalone"`).
+**Stack: Next.js 16 + TypeScript + Tailwind/shadcn + Prisma 7 + PostgreSQL (Neon).** Runs on **Hostinger Node.js hosting** (`output: "standalone"`) at https://renewals.abdulrehmaan.net, with the database on **Neon**.
 
 ---
 
@@ -23,7 +23,7 @@ The app runs no background workers. It checks for due reminders and invoices whe
 | 8 | [docs/08-MESSAGES.md](docs/08-MESSAGES.md) | Email and WhatsApp templates, placeholders, phone formatting |
 | 9 | [docs/09-TASKS.md](docs/09-TASKS.md) | Phase-by-phase build checklist |
 | 10 | [docs/10-TESTING.md](docs/10-TESTING.md) | Vitest, Playwright, manual QA checklist |
-| 11 | [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) | Neon + Vercel + Hostinger Node.js, go-live, backups |
+| 11 | [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) | Neon + Hostinger Node.js, daily cron, go-live, backups |
 | 12 | [docs/12-DESIGN-DIRECTION.md](docs/12-DESIGN-DIRECTION.md) | Visual quality bar (wins on visuals) |
 | 13 | [docs/13-INVOICES-AND-SHARING.md](docs/13-INVOICES-AND-SHARING.md) | Invoices, PDF, public links, sharing, currency (wins on these) |
 | — | [docs/ui-review.md](docs/ui-review.md) | UI review log, including the one-month owner walkthrough |
@@ -73,11 +73,11 @@ It does not start with Windows: run the `pg_ctl ... start` line again after a re
 |----------|----------|----------|
 | `DATABASE_URL` | yes | The app's database connection. On Neon, the **pooled** URL (`…-pooler…`, `?sslmode=require`). |
 | `DIRECT_URL` | yes | Migrations (`prisma migrate deploy`). On Neon, the **direct** URL. |
-| `APP_URL` | yes | Public base URL, e.g. `https://renewals.ourdomain.com`. Used in invoice links (`/i/<token>`) and password-reset emails. In production the server **refuses to start** if it's missing, uses http, or points to localhost. Choose the final domain before sending invoices: old links keep the old domain. |
+| `APP_URL` | yes | Public base URL, in production `https://renewals.abdulrehmaan.net`. Used in invoice links (`/i/<token>`) and password-reset emails. In production the server **refuses to start** if it's missing, uses http, or points to localhost. Choose the final domain before sending invoices: old links keep the old domain. |
 | `APP_KEY` | yes | `base64:` + 32 random bytes (`openssl rand -base64 32`). Encrypts the TOTP secret and the SMTP password (AES-256-GCM). |
 | `SESSION_COOKIE_NAME` | no | Defaults to `hrm_session`. |
-| `CRON_SECRET` | yes (production) | 32+ random characters (`openssl rand -hex 32`). The daily check (`/api/cron/check`) requires `Authorization: Bearer <CRON_SECRET>`; Vercel Cron sends it automatically. Without it the route answers 503 and the daily check doesn't run. |
-| `TRUSTED_IP_HEADER` | no | The request header holding the visitor's IP, for login throttling and the `/i/*` rate limit. Default `x-forwarded-for` (first value). Verify after deploy (docs/11 §5). |
+| `CRON_SECRET` | yes (production) | 32+ random characters (`openssl rand -hex 32`). The daily check (`/api/cron/check`) requires `Authorization: Bearer <CRON_SECRET>`; the hPanel cron job sends it with curl (docs/11 §4). Without it the route answers 503 and the daily check doesn't run. |
+| `TRUSTED_IP_HEADER` | no | The request header holding the visitor's IP, for login throttling and the `/i/*` rate limit. Default `x-forwarded-for` (first value). Verify after deploy (docs/11 §7). |
 | `ALLOW_LOCAL_APP_URL` | local only | `1` lets the production build run on this machine with a localhost `APP_URL` (`npm start`, e2e). **Never set on a host**: in production the server refuses to start unless `APP_URL` is the public https URL. |
 | `TEST_DATABASE_URL` | dev/CI | A separate, disposable database for integration tests. Wiped by the tests. |
 | `E2E_DATABASE_URL` | dev/CI | Disposable database for Playwright; falls back to `TEST_DATABASE_URL`. Wiped by the e2e setup. |
@@ -91,7 +91,7 @@ No variable may use the `NEXT_PUBLIC_` prefix: nothing secret is sent to the bro
 
 ## Configure email (SMTP)
 
-1. Create a mailbox in **hPanel → Emails** (e.g. `billing@ourdomain.com`) and set SPF, DKIM and DMARC for the domain there, so reminders don't land in spam.
+1. Create a mailbox in **hPanel → Emails** (e.g. `billing@abdulrehmaan.net`) and set SPF, DKIM and DMARC for the domain there, so reminders don't land in spam.
 2. In the app, **Settings → Email**: host `smtp.hostinger.com`, port `465` with **SSL** (or `587` with **TLS**), username = the full email address, the mailbox password, from email and from name. Check the exact host in hPanel → Emails → Configuration.
 3. Press **Send test email**: it goes to the admin email from Settings → Business, using the saved settings.
 
@@ -101,7 +101,9 @@ The password is stored encrypted and never shown again (leave the field empty to
 
 ## Configure invoices
 
-**Settings → Business**: business name, phone, admin email and WhatsApp; the **currencies** you bill in and the default currency.
+**Settings → Business**: business name, phone, admin email and WhatsApp; the **currencies** you bill in (any ISO 4217 currency, from a searchable list; PKR, USD and AED are on by default) and the default currency for new clients. A currency used by a client or service can't be turned off.
+
+**Currency** (docs/13 §6): no conversion. Each client has their own currency (e.g. PKR for a Pakistani client, AED for a UAE client); new services, and so their invoices and payments, start in it, and a service can override it. Decimal places follow the currency (`PKR 6,500`, `USD 49.99`, `KWD 12.500`). Totals are always shown per currency. In the CSV import, `client_currency` blank means the app default and `currency` blank means the client's currency.
 
 **Settings → Invoices** (docs/13 §11):
 
@@ -118,7 +120,7 @@ Each invoice has a secret public link (`/i/<token>`, 32 random bytes): no login,
 
 ## Reminders and the daily check
 
-The check runs when the dashboard opens (at most once per *check interval*, Settings → Reminders), from **Check now**, and **once a day at 04:00 UTC (09:00 PKT)** through `/api/cron/check`: Vercel Cron (`vercel.json`) or, on Hostinger, a cron entry (docs/11 §3). All of them call the same idempotent `runCheck()` under the same database lock: running it twice queues nothing new and creates no duplicate invoices. The route accepts GET and POST and requires `Authorization: Bearer <CRON_SECRET>` (constant-time compare).
+The check runs when the dashboard opens (at most once per *check interval*, Settings → Reminders), from **Check now**, and **once a day at 04:00 UTC (09:00 PKT)** through `/api/cron/check`, called by an hPanel cron job with curl (docs/11 §4). All of them call the same idempotent `runCheck()` under the same database lock: running it twice queues nothing new and creates no duplicate invoices. The route accepts GET and POST and requires `Authorization: Bearer <CRON_SECRET>` (constant-time compare).
 
 WhatsApp uses `wa.me` click-to-chat links only (`WhatsAppProvider` "link" in `src/lib/domain/whatsapp.ts`): the link is built on the server, the browser opens it in the click handler, and the admin presses Send in WhatsApp.
 
@@ -131,7 +133,7 @@ npm run build && npm run test:e2e   # Playwright against the standalone producti
 ```
 
 - Integration tests (`tests/integration`) use `TEST_DATABASE_URL`, migrated automatically and truncated by the tests; mail uses `jsonTransport`, and one test uses a closed port to check that real SMTP errors are stored.
-- The e2e test (`tests/e2e`, docs/13 §12) migrates and wipes `E2E_DATABASE_URL`, seeds an admin with a known TOTP secret, starts a local SMTP catcher and the standalone server on port 3200, then walks client → check → invoice → email with PDF → public link → PDF download → mark as paid.
+- The e2e tests (`tests/e2e`, docs/13 §12) migrate and wipe `E2E_DATABASE_URL`, seed an admin with a known TOTP secret, start a local SMTP catcher and the standalone server on port 3200, then walk client → check → invoice → email with PDF → public link → PDF download → mark as paid, and the currency flow (add a currency in Settings → a client in AED → the in-use lock).
 - `tests/unit/action-guards.test.ts` fails if a Server Action or route handler is added without its `requireAdmin()` guard.
 
 ## Production build
@@ -141,7 +143,7 @@ npm run build    # next build + postbuild (copies public/ and .next/static into 
 npm start        # node .next/standalone/server.js, with ./.env loaded if present; PORT sets the port
 ```
 
-See [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) for Vercel and Hostinger.
+See [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) for Neon, Hostinger and the daily cron job.
 
 ## Key decisions at a glance
 
@@ -149,25 +151,25 @@ See [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) for Vercel and Hostinger.
 |-------|----------|
 | Framework | Next.js (App Router), TypeScript strict, Node runtime (not Edge) |
 | UI | Tailwind CSS + shadcn/ui + lucide-react. No external CDNs |
-| Database | PostgreSQL on Neon via Prisma 7 (`@prisma/adapter-pg`). Reachable from both Vercel and Hostinger |
-| Hosting | Vercel (production, **Pro plan** for business use). Hostinger Node.js (Business/Cloud plan) as an alternative |
+| Database | PostgreSQL on Neon via Prisma 7 (`@prisma/adapter-pg`), TLS, point-in-time restore |
+| Hosting | Hostinger Node.js app (Business/Cloud plan), `https://renewals.abdulrehmaan.net`. No other host |
 | Users | Exactly one admin. No sign-up. Created with `npm run create-admin` |
 | Auth | Argon2id password + mandatory TOTP 2FA + DB-backed sessions + login throttling |
 | Mutations | Server Actions, each starting with `requireAdmin()` (enforced by a test) |
-| Background jobs | No workers. Checks run on dashboard load (throttled), via "Check now", and once a day from Vercel Cron / a Hostinger cron entry calling `/api/cron/check` |
-| Email | nodemailer over Hostinger SMTP. One email per request (safe for serverless) |
-| WhatsApp | `wa.me` links with the invoice link in the text, sent by the admin with one tap |
+| Background jobs | No workers. Checks run on dashboard load (throttled), via "Check now", and once a day from an hPanel cron job calling `/api/cron/check` with curl |
+| Email | nodemailer over Hostinger SMTP. One email per request (keeps each request short) |
+| WhatsApp | `wa.me` links with the invoice link in the text, sent by the admin with one tap. No paid API for now |
 | Invoices | One per service per renewal, numbered per year, PDF generated on demand (`@react-pdf/renderer`, Geist) |
 | Colours | Green > 30 days · Orange 8–30 · Red 0–7 · Expired < 0 (limits configurable) |
 | Reminder stages | 30, 15, 7, 3, 1, 0 days before; after expiry at 3, 6 and 9 days overdue |
 | Dates | `YYYY-MM-DD` strings in code, `Asia/Karachi` "today", `@db.Date` in the DB |
-| Currency | Each service has its own currency; totals are always per currency, never added across |
+| Currency | Any ISO 4217 currency, no conversion. Each client has their own currency; services start in it and can override it; totals are always per currency, never added across |
 
 ## Running costs (approximate, check current pricing)
 
 | Item | Cost |
 |------|------|
-| Vercel Pro | paid monthly per member (required for commercial use). Alternatively Hostinger Business/Cloud, which may already be paid for |
+| Hostinger Business/Cloud | the existing plan (Node.js apps need Business or Cloud) |
 | Neon Postgres | free tier is enough to start |
 | Email | the existing Hostinger mailbox |
 | WhatsApp | free (click-to-chat) |

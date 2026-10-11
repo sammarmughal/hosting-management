@@ -1,6 +1,6 @@
 # CLAUDE.md — Instructions for the AI coding assistant
 
-You are helping build **Hosting Renewal Manager**, a single-admin **Next.js** app that tracks client hosting renewals, shows colour-coded live countdowns, and helps send reminders by email and WhatsApp click-to-chat links. **There is no cron.**
+You are helping build **Hosting Renewal Manager**, a single-admin **Next.js** app that tracks client hosting renewals, shows colour-coded live countdowns, and helps send reminders by email and WhatsApp click-to-chat links. It runs on **Hostinger** (Node.js app) with the database on **Neon**; there are no background workers, only one daily cron call (rule 1).
 
 ## Always read first
 - `README.md` → key decisions
@@ -11,8 +11,8 @@ You are helping build **Hosting Renewal Manager**, a single-admin **Next.js** ap
 Next.js App Router · TypeScript strict · Tailwind + shadcn/ui + lucide-react · Prisma + PostgreSQL (Neon) · zod · react-hook-form · @node-rs/argon2 · otplib · qrcode · nodemailer · papaparse · sonner · Vitest · Playwright.
 
 ## Hard rules
-1. **No background workers and no polling loops.** Reminder checks run only through `runCheck()`: from the dashboard page, `checkNowAction`, and the one **daily scheduled check** (`/api/cron/check`, Vercel Cron at 04:00 UTC or a Hostinger cron entry; added by owner decision on 11 Oct 2026). The route needs `Authorization: Bearer <CRON_SECRET>`. Don't add other scheduled jobs.
-2. **No WhatsApp API.** Only `https://wa.me/<digits>?text=<encodeURIComponent(msg)>` links.
+1. **No background workers and no polling loops.** Reminder checks run only through `runCheck()`: from the dashboard page, `checkNowAction`, and the one **daily scheduled check** (`/api/cron/check`, called with curl by an hPanel cron job at 09:00 PKT, docs/11 §4; added by owner decision on 11 Oct 2026). The route needs `Authorization: Bearer <CRON_SECRET>`. Don't add other scheduled jobs.
+2. **No WhatsApp API** (no paid API for now, owner decision 11 Oct 2026). Only `https://wa.me/<digits>?text=<encodeURIComponent(msg)>` links.
 3. **Security** (`docs/05-SECURITY.md`):
    - **Every Server Action and route handler starts with `await requireAdmin()`** (the auth actions use the password-stage guard). The layout check alone is NOT enough.
    - `proxy.ts` (Next.js 16's rename of `middleware.ts`) is only a convenience redirect, never the security boundary.
@@ -22,11 +22,11 @@ Next.js App Router · TypeScript strict · Tailwind + shadcn/ui + lucide-react �
    - Server-only modules start with `import 'server-only'`.
 4. **Runtime:** Node.js only (`export const runtime = 'nodejs'` where relevant). Never Edge for anything touching Prisma, argon2 or nodemailer.
 5. **Dates:** business dates are `'YYYY-MM-DD'` strings everywhere in code. "Today" = `todayPK()` (`Asia/Karachi`). Convert at the DB boundary with `toDbDate`/`fromDbDate`. Never use `new Date()` arithmetic on business dates, and never use `CURRENT_DATE` in SQL.
-6. **Money:** Prisma `Decimal`. Pass it to components as a string, format it with `formatMoney()`, and never sum JS floats.
+6. **Money:** Prisma `Decimal(15,3)`. Pass it to components as a string, format it with `formatMoney(amount, currency)` (decimal places come from the currency via `Intl`), and never sum JS floats. **Currency:** any ISO 4217 code (`lib/domain/currency.ts`), no conversion, totals always per currency. Each client has a currency; new services start in it (docs/13 §6).
 7. Thresholds and reminder stages come from **settings** (defaults 30/7 and `30,15,7,3,1,0,-3,-6,-9`). The server and `TimerPill` use the same `statusColour()` function.
 8. `src/lib/domain/*` stays **pure** (no Prisma, no env, no implicit `Date.now()`) and fully unit-tested.
 9. Pages are server components by default. Add `'use client'` only for interactive pieces.
-10. Keep every server request short: one email per action call (serverless time limits).
+10. Keep every server request short: one email per action call.
 
 ## Style
 - Prettier with the Tailwind plugin. ESLint clean.

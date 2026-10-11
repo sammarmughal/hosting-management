@@ -98,6 +98,8 @@ model Client {
   company    String?   @db.VarChar(150)
   email      String?   @db.VarChar(190)
   phone      String?   @db.VarChar(20)                 // normalised digits: 923001234567
+  address    String?   @db.VarChar(300)                // optional; printed on invoices (Bill to)
+  currency   String    @db.Char(3)                     // ISO 4217; new services start in it
   notes      String?
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz
@@ -117,8 +119,8 @@ model Service {
   planLabel        String?       @map("plan_label") @db.VarChar(100)
   startDate        DateTime      @map("start_date") @db.Date
   renewalDate      DateTime      @map("renewal_date") @db.Date   // end of current period (inclusive)
-  chargeAmount     Decimal       @default(0) @map("charge_amount") @db.Decimal(12, 2)
-  currency         String        @default("PKR") @db.Char(3)
+  chargeAmount     Decimal       @default(0) @map("charge_amount") @db.Decimal(15, 3)
+  currency         String        @default("PKR") @db.Char(3)   // the app sets it from the client; can be overridden
   status           ServiceStatus @default(active)
   remindersEnabled Boolean       @default(true) @map("reminders_enabled")
   notes            String?
@@ -138,8 +140,8 @@ enum PaymentMethod { cash bank_transfer jazzcash easypaisa other }
 model Payment {
   id          Int           @id @default(autoincrement())
   serviceId   Int           @map("service_id")
-  amount      Decimal       @db.Decimal(12, 2)
-  currency    String        @default("PKR") @db.Char(3)
+  amount      Decimal       @db.Decimal(15, 3)
+  currency    String        @default("PKR") @db.Char(3)   // taken from the service
   paidOn      DateTime      @map("paid_on") @db.Date
   method      PaymentMethod @default(cash)
   reference   String?       @db.VarChar(100)
@@ -232,14 +234,15 @@ model AuditLog {
 | `business_phone` | `` |
 | `admin_email` | `` |
 | `admin_whatsapp` | `` |
-| `default_currency` | `PKR` |
+| `default_currency` | `PKR` (default currency for new clients) |
+| `enabled_currencies` | `AED,PKR,USD` (any ISO 4217 codes) |
 | `threshold_orange_days` | `30` |
 | `threshold_red_days` | `7` |
 | `reminder_stages` | `30,15,7,3,1,0,-3,-6,-9` |
 | `post_expiry_to_client` | `1` |
 | `check_interval_minutes` | `60` |
 | `auto_send_emails` | `0` |
-| `auto_send_batch_size` | `10` (kept small for serverless time limits) |
+| `auto_send_batch_size` | `10` (kept small so each request stays short) |
 | `last_check_at` | null |
 | `smtp_host` | `smtp.hostinger.com` |
 | `smtp_port` | `465` |
@@ -308,6 +311,9 @@ Client search (name/company/email/phone/domain) uses `contains` with `mode: 'ins
 - Changing `renewalDate` by hand: in the same transaction, set the pending/failed/opened reminders with the old `cycleDate` to `skipped`.
 - `phone` is stored normalised (digits with country code). Show it formatted.
 - `domain` is stored lowercase without `http(s)://`, `www.` or a trailing slash.
+- **Currency (no conversion, 11 Oct 2026):** every client has a required `currency` (ISO 4217). A new service starts in the client's currency and can override it; payments and invoices take the service's currency. A currency used by any client or service can't be removed from `enabled_currencies`. Amounts may not have more decimals than the currency allows (from `Intl`: JPY/PKR 0, USD 2, KWD 3). Totals are grouped per currency, never added together.
+- **Money columns are `DECIMAL(15,3)`** (were 12,2): `services.charge_amount`, `payments.amount`, `invoices.subtotal/discount/tax_amount/total`, `invoice_items.unit_amount/amount` (invoice tables: see `13-INVOICES-AND-SHARING.md`). `tax_rate` stays `DECIMAL(5,2)`.
+- Migration `20261011123948_client_currency_and_money_scale` set each existing client's currency to the one most of their services use (ties go to the app default, then alphabetical), or the app default if they have no services.
 
 ## 7. Seed & demo data
 

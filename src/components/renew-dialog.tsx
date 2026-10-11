@@ -101,7 +101,10 @@ function RenewForm({
   onDone: (newRenewalDate: ISODate) => void
 }) {
   const today = React.useMemo(() => todayPK(), [])
-  const schema = React.useMemo(() => renewSchema(today), [today])
+  const schema = React.useMemo(
+    () => renewSchema(today, service.currency),
+    [today, service.currency]
+  )
   const {
     register,
     control,
@@ -113,7 +116,9 @@ function RenewForm({
     resolver: zodResolver(schema),
     defaultValues: {
       serviceId: service.id,
-      amount: formatAmount(invoice?.total ?? service.chargeAmount),
+      amount: invoice
+        ? formatAmount(invoice.total, invoice.currency)
+        : formatAmount(service.chargeAmount, service.currency),
       paidOn: today,
       method: "Bank transfer",
       reference: "",

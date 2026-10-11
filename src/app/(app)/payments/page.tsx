@@ -70,7 +70,7 @@ export default async function PaymentsPage({ searchParams }: Props) {
                   <span className="mr-1 text-base font-medium text-ink-muted">
                     {t.currency}
                   </span>
-                  {formatAmount(t.total)}
+                  {formatAmount(t.total, t.currency)}
                 </span>
               ))
             )}

@@ -1,4 +1,5 @@
 import {
+  BanknoteIcon,
   MailIcon,
   MapPinIcon,
   MessageCircleIcon,
@@ -7,6 +8,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 
+import { currencyName } from "@/lib/domain/currency"
 import { buildWaLink, formatPhone } from "@/lib/domain/whatsapp"
 import type { ClientDetail } from "@/types/view"
 
@@ -61,6 +63,12 @@ export function ContactCard({ client }: { client: ClientDetail }) {
           ) : (
             <span className="text-ink-subtle">No valid WhatsApp number</span>
           )}
+        </Row>
+        <Row icon={BanknoteIcon} label="Currency">
+          <span className="truncate text-ink" title="New services, invoices and payments start in it">
+            <span className="font-mono">{client.currency}</span>
+            <span className="text-ink-muted"> · {currencyName(client.currency)}</span>
+          </span>
         </Row>
         {/* Optional: nothing is shown when there's no address. */}
         {client.address && (

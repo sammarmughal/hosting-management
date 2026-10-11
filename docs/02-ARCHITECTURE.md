@@ -5,24 +5,22 @@
 | Layer | Choice | Why |
 |-------|--------|-----|
 | Framework | **Next.js (App Router, latest stable) + TypeScript (strict)** | Modern React UI, server components, server actions |
-| Runtime | Node.js 20 LTS+ (**Node runtime only, not Edge**) | Needed for Prisma, argon2 and nodemailer, and it runs the same on Vercel and Hostinger |
-| Hosting | **Vercel** (primary). **Hostinger Node.js hosting** (alternative) | `output: 'standalone'` build works on both |
-| Database | **PostgreSQL on Neon** (serverless Postgres, TLS) | Reachable from both Vercel and Hostinger. Vercel has a native Neon integration. The free tier is enough to start |
+| Runtime | Node.js 20 LTS+ (**Node runtime only, not Edge**) | Needed for Prisma, argon2 and nodemailer |
+| Hosting | **Hostinger Node.js hosting** only (owner decision, 11 Oct 2026) | `output: 'standalone'` build, started with `node .next/standalone/server.js`. Production URL: `https://renewals.abdulrehmaan.net` |
+| Database | **PostgreSQL on Neon** (serverless Postgres, TLS) | Managed Postgres with TLS and point-in-time restore. The free tier is enough to start |
 | ORM | **Prisma** | Typed queries, migrations, seed script |
 | Styling | **Tailwind CSS** + CSS variables (design tokens from `06-UI-SPEC.md`) | Fast to build and consistent |
 | UI primitives | **shadcn/ui** (copied into the repo) + **lucide-react** icons | Accessible dialogs, dropdowns and tabs. No runtime CDN |
 | Forms/validation | **zod** (+ `react-hook-form` on the bigger forms) | One schema validates on both client and server |
-| Password hashing | **@node-rs/argon2** (Argon2id) | Fast and secure, works on Vercel |
+| Password hashing | **@node-rs/argon2** (Argon2id) | Fast and secure |
 | 2FA | **otplib** (TOTP) + **qrcode** (QR generated on our server) | The secret never goes to a third party |
-| Email | **nodemailer** over Hostinger SMTP | Works from Vercel and Hostinger |
+| Email | **nodemailer** over Hostinger SMTP | Simple, no extra service |
 | CSV | **papaparse** | Import/export |
 | Dates | Date-only ISO strings + `Intl` with `Asia/Karachi` (see `04-BUSINESS-LOGIC.md` §1) | No timezone bugs on UTC servers |
 | Tests | **Vitest** (unit/integration) + **Playwright** (e2e smoke) | |
 
-> **Why not MySQL on Hostinger?** When the app runs on Vercel, the database must be reachable over the internet with TLS. Opening Hostinger's shared MySQL to "any host" is weaker security. Neon works the same from both hosts.
-> *If you later want everything on Hostinger:* change the Prisma `provider` to `mysql`, point `DATABASE_URL` to the Hostinger database, and re-run `prisma migrate`. The schema in `03-DATABASE.md` is written to be portable.
-
-> **Vercel plan note:** Vercel's free **Hobby** plan is for non-commercial use. Since this is a business tool, plan for **Vercel Pro** (or host on Hostinger Node.js instead).
+> **Why not MySQL on Hostinger?** Neon gives managed backups, point-in-time restore and branch databases (handy for dev and staging), and the app uses Prisma/Postgres features such as advisory locks.
+> *If you later want the database on Hostinger too:* change the Prisma `provider` to `mysql`, point `DATABASE_URL` to the Hostinger database, and re-run `prisma migrate`. The schema in `03-DATABASE.md` is written to be portable.
 
 ## 2. The "no-cron" design
 
@@ -53,8 +51,8 @@ Client component <ReminderQueue/>:
   [Open WhatsApp]   → <a href="https://wa.me/…" target="_blank"> + markOpenedAction(id)
 ```
 
-- There is **no background process**. Everything runs inside requests: the admin's own, plus **one daily scheduled request** (owner decision, 11 Oct 2026): Vercel Cron (`vercel.json`, 04:00 UTC = 09:00 PKT) or a Hostinger cron entry calls `GET/POST /api/cron/check` with `Authorization: Bearer <CRON_SECRET>`. It runs the same idempotent `runCheck({ force: true })` under the same advisory lock (docs/11).
-- Sending one email per action call keeps every request short (well under the Vercel function time limit).
+- There is **no background process**. Everything runs inside requests: the admin's own, plus **one daily scheduled request** (owner decision, 11 Oct 2026): a Hostinger hPanel cron job calls `POST /api/cron/check` with curl and `Authorization: Bearer <CRON_SECRET>` at 09:00 PKT (the endpoint also accepts GET). It runs the same idempotent `runCheck({ force: true })` under the same advisory lock (docs/11 §4).
+- Sending one email per action call keeps each request short.
 
 ## 3. Folder structure
 
@@ -173,7 +171,7 @@ hosting-renewal/
 DATABASE_URL="postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/hrm?sslmode=require"
 DIRECT_URL="postgresql://user:pass@ep-xxx.region.aws.neon.tech/hrm?sslmode=require"
 
-APP_URL="https://renewals.example.com"
+APP_URL="https://renewals.abdulrehmaan.net"
 APP_KEY="base64:…32 random bytes…"     # encrypts TOTP secrets + SMTP password. Generate: openssl rand -base64 32
 SESSION_COOKIE_NAME="hrm_session"
 TZ="Asia/Karachi"                       # informational; code never relies on process TZ
@@ -190,6 +188,6 @@ SMTP settings and templates live in the DB (`settings` table, with the password 
 - Files are kebab-case, components PascalCase, functions camelCase, and DB models PascalCase with snake_case columns via `@map`.
 - `lib/domain/*` must stay pure: no Prisma, no `Date.now()` without a parameter, no env access.
 - `lib/server/*` starts with `import 'server-only'`.
-- Money is Prisma `Decimal` in the DB. Convert with `Decimal.js` (bundled with Prisma), and never add floats.
+- Money is Prisma `Decimal` in the DB. Convert with `Decimal.js` (bundled with Prisma), and never add floats. Never add amounts in different currencies: group totals per currency. Currency names and decimal places come from `Intl` (see `04-BUSINESS-LOGIC.md`).
 - Business dates are always `YYYY-MM-DD` strings in code and `@db.Date` in the DB (see `03-DATABASE.md` §4).
 - Only use `'use client'` where interaction is needed. Keep data fetching in server components.

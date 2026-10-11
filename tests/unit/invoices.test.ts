@@ -27,29 +27,46 @@ describe("formatInvoiceNumber (docs/13 §3)", () => {
 describe("invoiceTotals", () => {
   it("adds lines exactly with no tax by default", () => {
     const t = invoiceTotals([{ quantity: 1, unitAmount: "6500.00" }])
-    expect(t).toMatchObject({ subtotal: "6500.00", taxAmount: "0.00", total: "6500.00" })
+    expect(t).toMatchObject({ subtotal: "6500.000", taxAmount: "0.000", total: "6500.000" })
+    expect(t.taxRate).toBe("0.00")
   })
   it("applies discount before tax and rounds tax half-up to the cent", () => {
     // (8750 − 250) × 17% = 1445.00
     expect(
       invoiceTotals([{ quantity: 1, unitAmount: "8750" }], { discount: "250", taxRate: "17" })
-    ).toMatchObject({ subtotal: "8750.00", discount: "250.00", taxAmount: "1445.00", total: "9945.00" })
+    ).toMatchObject({
+      subtotal: "8750.000",
+      discount: "250.000",
+      taxRate: "17.00",
+      taxAmount: "1445.000",
+      total: "9945.000",
+    })
     // 49.99 × 5% = 2.4995 → 2.50
     expect(invoiceTotals([{ quantity: 1, unitAmount: "49.99" }], { taxRate: "5" }).taxAmount).toBe(
-      "2.50"
+      "2.500"
     )
     // 10.01 × 16.5% = 1.65165 → 1.65
     expect(
       invoiceTotals([{ quantity: 1, unitAmount: "10.01" }], { taxRate: "16.5" }).taxAmount
-    ).toBe("1.65")
+    ).toBe("1.650")
+  })
+  it("rounds tax to the currency's minor unit (0, 2 or 3 decimals)", () => {
+    const tax = (unitAmount: string, decimals: number) =>
+      invoiceTotals([{ quantity: 1, unitAmount }], { taxRate: "17", decimals })
+    // PKR / JPY: 8750 × 17% = 1487.5 → 1488
+    expect(tax("8750", 0)).toMatchObject({ taxAmount: "1488.000", total: "10238.000" })
+    // USD: 49.99 × 17% = 8.4983 → 8.50
+    expect(tax("49.99", 2)).toMatchObject({ taxAmount: "8.500", total: "58.490" })
+    // KWD: 12.345 × 17% = 2.09865 → 2.099
+    expect(tax("12.345", 3)).toMatchObject({ taxAmount: "2.099", total: "14.444" })
   })
   it("multiplies quantity and keeps per-line amounts", () => {
     const t = invoiceTotals([
       { quantity: 2, unitAmount: "0.10" },
       { quantity: 3, unitAmount: "0.20" },
     ])
-    expect(t.lines).toEqual(["0.20", "0.60"])
-    expect(t.total).toBe("0.80")
+    expect(t.lines).toEqual(["0.200", "0.600"])
+    expect(t.total).toBe("0.800")
   })
   it("rejects a discount above the subtotal, bad quantities and bad rates", () => {
     expect(() => invoiceTotals([{ quantity: 1, unitAmount: "10" }], { discount: "11" })).toThrow()

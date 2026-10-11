@@ -2,13 +2,12 @@
 
 import { redirect } from "next/navigation"
 
+import { currencyOptions } from "@/lib/domain/currency"
 import {
   clientSchema,
-  currencyOptions,
   newClientSchema,
   serviceSchema,
   type ClientInput,
-  type Currency,
   type NewClientInput,
   type ServiceInput,
 } from "@/lib/domain/validation"
@@ -40,7 +39,7 @@ async function domainTaken(domain: string, exceptServiceId?: number) {
 
 /** The currency must be enabled in settings; an edit may keep its current one. */
 async function currencyError(
-  currency: Currency,
+  currency: string,
   field: string,
   current?: string
 ): Promise<ActionResult<never> | null> {
@@ -59,7 +58,9 @@ export async function createClientWithServiceAction(
   await requireAdmin()
   const parsed = newClientSchema.safeParse(input)
   if (!parsed.success) return checkFields(parsed.error)
-  const bad = await currencyError(parsed.data.service.currency, "service.currency")
+  const bad =
+    (await currencyError(parsed.data.client.currency, "client.currency")) ??
+    (await currencyError(parsed.data.service.currency, "service.currency"))
   if (bad) return bad
   if (await domainTaken(parsed.data.service.domain))
     return {
@@ -86,6 +87,11 @@ export async function updateClientAction(
   if (!numericId.safeParse(id).success) return invalid()
   const parsed = clientSchema.safeParse(input)
   if (!parsed.success) return checkFields(parsed.error)
+  const current = await prisma.client.findUnique({ where: { id }, select: { currency: true } })
+  if (!current) return { ok: false, error: "Client not found." }
+  // Existing services keep their own currency; only new ones start in this.
+  const bad = await currencyError(parsed.data.currency, "currency", current.currency)
+  if (bad) return bad
   const { count } = await prisma.client.updateMany({ where: { id }, data: parsed.data })
   if (!count) return { ok: false, error: "Client not found." }
   await audit("client.update", { entity: "client", entityId: id })

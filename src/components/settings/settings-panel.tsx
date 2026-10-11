@@ -11,9 +11,9 @@ import { InvoiceSettingsForm } from "@/components/settings/invoice-settings"
 import { ReminderSettingsForm } from "@/components/settings/reminder-settings"
 import { TemplateSettingsForms } from "@/components/settings/template-settings"
 import { SecuritySettings } from "@/components/settings/security-settings"
+import { CurrencySettings } from "@/components/settings/currency-settings"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { CURRENCIES } from "@/lib/domain/validation"
+import type { CurrencyOption, CurrencyUse } from "@/lib/domain/currency"
 import { sendTestEmailAction } from "@/actions/settings"
 import type { Preferences } from "@/lib/domain/preferences"
 import { cn } from "@/lib/utils"
@@ -36,11 +36,15 @@ export function SettingsPanel({
   today,
   logins,
   invoiceCount,
+  currencyCatalog,
+  currencyUsage,
 }: {
   initial: Preferences
   tab: string
   today: string
   invoiceCount: number
+  currencyCatalog: CurrencyOption[]
+  currencyUsage: Record<string, CurrencyUse>
   logins: React.ComponentProps<typeof SecuritySettings>["logins"]
 }) {
   const router = useRouter()
@@ -119,52 +123,13 @@ export function SettingsPanel({
                   value={draft.adminWhatsapp}
                   onChange={(adminWhatsapp) => update({ adminWhatsapp })}
                 />
-                <fieldset className="grid gap-1.5">
-                  <legend className="mb-1.5 text-sm leading-none font-medium">
-                    Currencies
-                  </legend>
-                  <div className="flex flex-wrap gap-x-5">
-                    {CURRENCIES.map((c) => (
-                      <label
-                        key={c}
-                        className="flex min-h-11 items-center gap-2 text-sm md:min-h-9"
-                      >
-                        <Checkbox
-                          checked={draft.enabledCurrencies.includes(c)}
-                          disabled={c === draft.defaultCurrency}
-                          aria-describedby="currencies-help"
-                          onCheckedChange={(on) =>
-                            update({
-                              enabledCurrencies: CURRENCIES.filter((x) =>
-                                x === c ? on === true : draft.enabledCurrencies.includes(x)
-                              ),
-                            })
-                          }
-                        />
-                        {c}
-                      </label>
-                    ))}
-                  </div>
-                  <p id="currencies-help" className="text-xs text-ink-muted">
-                    Offered on the service form. The default currency is always on.
-                  </p>
-                </fieldset>
-                <FormField id="default-currency" label="Default currency">
-                  <select
-                    id="default-currency"
-                    className={selectClass}
-                    value={draft.defaultCurrency}
-                    onChange={(e) =>
-                      update({
-                        defaultCurrency: e.target.value as typeof draft.defaultCurrency,
-                      })
-                    }
-                  >
-                    {draft.enabledCurrencies.map((c) => (
-                      <option key={c}>{c}</option>
-                    ))}
-                  </select>
-                </FormField>
+                <CurrencySettings
+                  enabled={draft.enabledCurrencies}
+                  defaultCurrency={draft.defaultCurrency}
+                  catalog={currencyCatalog}
+                  usage={currencyUsage}
+                  onChange={update}
+                />
               </>
             )}
           </SettingsSection>

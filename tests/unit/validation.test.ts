@@ -26,12 +26,24 @@ describe("renewSchema", () => {
     expect(r.success && r.data.amount).toBe("6500.50")
   })
 
-  it.each(["0", "0.00", "", "abc", "6500.505", "-5", "123456789"])(
+  it.each(["0", "0.00", "", "abc", "6500.5055", "-5", "12345678901"])(
     "rejects amount %j",
     (amount) => {
       expect(errorFor({ amount }, "amount")).toBeDefined()
     }
   )
+
+  it("checks decimals against the service's currency", () => {
+    const amountError = (amount: string, currency: string) => {
+      const r = renewSchema(TODAY, currency).safeParse({ ...base, amount })
+      return r.success ? undefined : r.error.issues.find((i) => i.path[0] === "amount")?.message
+    }
+    expect(amountError("6,500", "PKR")).toBeUndefined()
+    expect(amountError("6500.50", "PKR")).toBe("PKR amounts can’t have decimals")
+    expect(amountError("49.99", "USD")).toBeUndefined()
+    expect(amountError("49.995", "USD")).toBe("USD amounts have at most 2 decimals")
+    expect(amountError("12.345", "KWD")).toBeUndefined()
+  })
 
   it("allows paid on up to tomorrow, not later", () => {
     expect(parse({ paidOn: "2026-09-30" }).success).toBe(true)

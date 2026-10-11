@@ -15,10 +15,10 @@ One private web app where the admin can:
 
 ## 3. Constraints (approved)
 
-- **No background workers.** Reminder checks run when the admin opens the app (see `04-BUSINESS-LOGIC.md` §4), from Check now, and once a day from a scheduled request to `/api/cron/check` (owner decision, 11 Oct 2026; docs/11).
+- **No background workers.** Reminder checks run when the admin opens the app (see `04-BUSINESS-LOGIC.md` §4), from Check now, and once a day from a Hostinger hPanel cron job that calls `/api/cron/check` (owner decision, 11 Oct 2026; docs/11 §4).
 - **WhatsApp without the paid API.** Use `wa.me` click-to-chat links with pre-filled text. The admin taps Send in WhatsApp.
 - **Single admin account**, fully authenticated, with nobody else able to access the app.
-- Built with **Next.js**. Deployed on **Vercel** (primary), and it must also run on **Hostinger's Node.js hosting** without code changes.
+- Built with **Next.js**. Deployed on **Hostinger's Node.js hosting** only (owner decision, 11 Oct 2026), at `https://renewals.abdulrehmaan.net`. The database is PostgreSQL on **Neon**.
 - Keep it simple: one Next.js app, one database, and no extra services except the database and SMTP.
 
 ## 4. Users
@@ -54,14 +54,14 @@ One private web app where the admin can:
 - FR-1.8 There is no registration page. The admin is created with `npm run create-admin`, a CLI script run locally against the production database.
 
 ### FR-2 Clients (CRUD)
-- FR-2.1 Create a client with: name (required), company, email, WhatsApp phone, notes. At least one of email or phone is required.
+- FR-2.1 Create a client with: name (required), company, email, WhatsApp phone, currency (required, defaults to the app's default currency), notes. At least one of email or phone is required.
 - FR-2.2 View the client list with search (name, company, email, phone, domain), filters and sorting.
 - FR-2.3 Edit any client field.
 - FR-2.4 Delete a client after a confirmation modal. This also deletes their services, payments and reminders.
 - FR-2.5 Client detail page shows the client info, their services with timers, payment history and reminder log.
 
 ### FR-3 Services (hosting items)
-- FR-3.1 Add a service to a client with: domain (required), plan label (optional), start date (required), renewal date (auto = start + 1 year, editable), charge amount (required, ≥ 0), currency (default PKR), reminders on/off, notes.
+- FR-3.1 Add a service to a client with: domain (required), plan label (optional), start date (required), renewal date (auto = start + 1 year, editable), charge amount (required, ≥ 0), currency (defaults to the client's currency, can be changed per service), reminders on/off, notes.
 - FR-3.2 Edit or delete a service.
 - FR-3.3 Mark a service as **Cancelled**. It is then hidden from the dashboard and gets no reminders.
 - FR-3.4 A "Quick add" form creates a client and their first service in one step.
@@ -112,7 +112,7 @@ One private web app where the admin can:
 - FR-11.2 Export all services to CSV.
 
 ### FR-12 Settings
-- FR-12.1 Business profile: business name, admin email, admin WhatsApp number, currency.
+- FR-12.1 Business profile: business name, admin email, admin WhatsApp number, enabled currencies (any ISO 4217 code from a searchable picker; PKR, USD and AED on by default) and the default currency for new clients. A currency used by any client or service can't be turned off. There is no currency conversion: totals are shown per currency.
 - FR-12.2 Colour limits, reminder stages (a comma list), whether post-expiry reminders go to the client, check interval, and auto-send emails on or off.
 - FR-12.3 SMTP: host, port, encryption, username, password (stored encrypted), from name, from email.
 - FR-12.4 Message templates: client email (subject and body), client WhatsApp, admin summary email, admin WhatsApp summary.
@@ -139,8 +139,8 @@ One private web app where the admin can:
 - Online payment collection (cards, JazzCash or Easypaisa gateways)
 - Hostinger API integration (auto-suspend)
 - Multiple users or roles, and a client portal
-- WhatsApp Business API or other automated WhatsApp sending
-- Background workers (the only scheduled job is the daily check, docs/11)
+- WhatsApp Business API or other automated WhatsApp sending (not planned for now, owner decision, 11 Oct 2026)
+- Background workers (the only scheduled job is the daily check, docs/11 §4)
 - Multi-language UI (English only in v1. Urdu is possible later)
 
 ## 9. Acceptance Criteria (release checklist)

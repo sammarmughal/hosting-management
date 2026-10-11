@@ -3,6 +3,7 @@
 import { cookies } from "next/headers"
 import { z } from "zod"
 
+import { currencyInUseError } from "@/lib/domain/currency"
 import { DEFAULT_TEMPLATES, type TemplateKey } from "@/lib/domain/default-templates"
 import {
   businessSchema,
@@ -27,7 +28,7 @@ import { today } from "@/lib/server/clock"
 import { encrypt } from "@/lib/server/crypto"
 import { prisma } from "@/lib/server/db"
 import { MailError, sendMail } from "@/lib/server/mail"
-import { getAppSettings, updateSettings } from "@/lib/server/settings"
+import { getAppSettings, getCurrencyUsage, updateSettings } from "@/lib/server/settings"
 import {
   clientIp,
   cookieName,
@@ -54,6 +55,9 @@ export async function savePreferencesAction(
     case "business": {
       const p = businessSchema.safeParse(input)
       if (!p.success) return { ok: false, error: first(p.error) }
+      // A currency used by any client or service stays on (docs/13 §6).
+      const inUse = currencyInUseError(p.data.enabledCurrencies, await getCurrencyUsage())
+      if (inUse) return { ok: false, error: inUse }
       await updateSettings({
         business_name: p.data.businessName,
         business_phone: p.data.businessPhone,

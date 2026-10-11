@@ -12,7 +12,8 @@ import type { ActionResult } from "@/types/actions"
 
 /**
  * Imports the valid preview rows in one transaction (docs/04 §9). Rows are
- * validated again here. Same client name + email or phone → one client.
+ * validated again here. Same client name + email or phone → one client
+ * (an existing client keeps their currency; the new service has its own).
  */
 export async function commitImportAction(
   rows: NewClientInput[],
@@ -23,7 +24,12 @@ export async function commitImportAction(
     return { ok: false, error: "Choose a CSV with no more than 2,000 rows." }
   const parsed = rows.map((row) => newClientSchema.safeParse(row))
   const { enabledCurrencies } = await getAppSettings()
-  if (parsed.some((p) => !p.success || !enabledCurrencies.includes(p.data.service.currency)))
+  const enabled = (c: string) => enabledCurrencies.includes(c)
+  if (
+    parsed.some(
+      (p) => !p.success || !enabled(p.data.client.currency) || !enabled(p.data.service.currency)
+    )
+  )
     return { ok: false, error: "Some rows are invalid. Review the file and try again." }
 
   const counts = await prisma.$transaction(

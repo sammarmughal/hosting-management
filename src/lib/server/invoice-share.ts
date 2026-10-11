@@ -3,6 +3,7 @@ import "server-only"
 import { daysLeft } from "@/lib/domain/dates"
 import { invoiceFilename } from "@/lib/domain/invoices"
 import { invoiceEmail, invoiceWhatsappText, oneLine, wrapEmail } from "@/lib/domain/messages"
+import { MONEY_SCALE } from "@/lib/domain/money"
 import { escapeHtml } from "@/lib/domain/templates"
 import { normalisePhone } from "@/lib/domain/whatsapp"
 import { audit } from "@/lib/server/audit"
@@ -42,7 +43,7 @@ export async function buildShareData(invoiceId: number): Promise<ShareData | nul
   const message = {
     number: inv.number,
     link: publicInvoiceUrl(inv.publicToken),
-    total: inv.total.toFixed(2),
+    total: inv.total.toFixed(MONEY_SCALE),
     currency: inv.currency,
     dueDate: fromDbDate(inv.dueDate),
   }

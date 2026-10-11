@@ -10,6 +10,7 @@ import {
   type Template,
 } from "@/lib/domain/messages"
 import { publicInvoiceUrl } from "@/lib/server/invoices"
+import { MONEY_SCALE } from "@/lib/domain/money"
 import { serviceColour } from "@/lib/domain/status"
 import { linkProvider } from "@/lib/domain/whatsapp"
 import { today as clockToday } from "@/lib/server/clock"
@@ -73,11 +74,12 @@ export function toServiceRow(s: ServiceWithClient, ctx: ViewContext): ServiceRow
     email: s.client.email,
     phone: s.client.phone,
     address: s.client.address,
+    clientCurrency: s.client.currency,
     domain: s.domain,
     planLabel: s.planLabel,
     startDate: fromDbDate(s.startDate),
     renewalDate,
-    chargeAmount: s.chargeAmount.toFixed(2),
+    chargeAmount: s.chargeAmount.toFixed(MONEY_SCALE),
     currency: s.currency,
     status: s.status,
     remindersEnabled: s.remindersEnabled,
@@ -92,7 +94,7 @@ export function toServiceRow(s: ServiceWithClient, ctx: ViewContext): ServiceRow
         id: inv.id,
         number: inv.number,
         status: displayStatus(inv.status, fromDbDate(inv.dueDate), ctx.today),
-        total: inv.total.toFixed(2),
+        total: inv.total.toFixed(MONEY_SCALE),
         currency: inv.currency,
       }
     : null
@@ -113,7 +115,7 @@ export function messageInvoice(inv: InvoiceLink): MessageInvoice {
   return {
     number: inv.number,
     link: publicInvoiceUrl(inv.publicToken),
-    total: inv.total.toFixed(2),
+    total: inv.total.toFixed(MONEY_SCALE),
     currency: inv.currency,
     dueDate: fromDbDate(inv.dueDate),
   }

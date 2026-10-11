@@ -1,8 +1,8 @@
 // Invoices (docs/13 §2–§5). Pure: numbering format, totals with tax, the
 // creation window, the derived overdue status and display labels. Money is
-// handled as integer cents (see money.ts), never JS floats.
+// handled as integer thousandths (see money.ts), never JS floats.
 import { addOneYear, formatDatePK, type ISODate } from "@/lib/domain/dates"
-import { fromCents, toCents } from "@/lib/domain/money"
+import { fromUnits, MONEY_SCALE, toUnits } from "@/lib/domain/money"
 
 /* Numbering (docs/13 §3) --------------------------------------------- */
 
@@ -40,14 +40,20 @@ export interface InvoiceTotals {
   total: string
 }
 
+const RATE_RE = /^(\d{1,3})(?:\.(\d{1,2}))?$/
+
 /** "17" / "17.5" → 1700 / 1750 (hundredths of a percent). */
 function rateBasisPoints(rate: string): bigint {
-  const cents = toCents(rate) // same parsing: two decimals, half-up
-  if (cents < 0n || cents > 10000n) throw new RangeError(`Invalid tax rate: ${rate}`)
-  return cents
+  const m = RATE_RE.exec(rate.trim())
+  const bp = m ? BigInt(m[1] ?? "0") * 100n + BigInt((m[2] ?? "").padEnd(2, "0")) : -1n
+  if (bp < 0n || bp > 10000n) throw new RangeError(`Invalid tax rate: ${rate}`)
+  return bp
 }
 
-/** Integer division rounding half away from zero. */
+/** 1750n → "17.50" */
+const rateText = (bp: bigint) => `${bp / 100n}.${String(bp % 100n).padStart(2, "0")}`
+
+/** Integer division rounding half away from zero (n ≥ 0). */
 function divRound(n: bigint, d: bigint): bigint {
   const q = n / d
   const r = n % d
@@ -56,29 +62,35 @@ function divRound(n: bigint, d: bigint): bigint {
 
 /**
  * Subtotal = Σ qty × unit; tax = (subtotal − discount) × rate, rounded half-up
- * to the cent; total = subtotal − discount + tax. Discount can't exceed the subtotal.
+ * to the currency's minor unit (`decimals`: PKR 0, USD 2, KWD 3); total =
+ * subtotal − discount + tax. Discount can't exceed the subtotal.
  */
 export function invoiceTotals(
   lines: readonly InvoiceLine[],
-  { discount = "0", taxRate = "0" }: { discount?: string; taxRate?: string } = {}
+  {
+    discount = "0",
+    taxRate = "0",
+    decimals = 2,
+  }: { discount?: string; taxRate?: string; decimals?: number } = {}
 ): InvoiceTotals {
   const amounts = lines.map((l) => {
     if (!Number.isInteger(l.quantity) || l.quantity < 1)
       throw new RangeError(`Invalid quantity: ${l.quantity}`)
-    return toCents(l.unitAmount) * BigInt(l.quantity)
+    return toUnits(l.unitAmount) * BigInt(l.quantity)
   })
   const subtotal = amounts.reduce((a, b) => a + b, 0n)
-  const disc = toCents(discount)
+  const disc = toUnits(discount)
   if (disc < 0n || disc > subtotal) throw new RangeError("Discount must be between 0 and the subtotal")
   const bp = rateBasisPoints(taxRate)
-  const tax = divRound((subtotal - disc) * bp, 10000n)
+  const step = 10n ** BigInt(MONEY_SCALE - Math.min(Math.max(decimals, 0), MONEY_SCALE))
+  const tax = divRound((subtotal - disc) * bp, 10000n * step) * step
   return {
-    lines: amounts.map(fromCents),
-    subtotal: fromCents(subtotal),
-    discount: fromCents(disc),
-    taxRate: fromCents(bp),
-    taxAmount: fromCents(tax),
-    total: fromCents(subtotal - disc + tax),
+    lines: amounts.map(fromUnits),
+    subtotal: fromUnits(subtotal),
+    discount: fromUnits(disc),
+    taxRate: rateText(bp),
+    taxAmount: fromUnits(tax),
+    total: fromUnits(subtotal - disc + tax),
   }
 }
 

@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { currencyLabel } from "@/lib/domain/currency"
 import { addOneYear, formatDatePK, isISODate, todayPK } from "@/lib/domain/dates"
 import { normaliseDomain } from "@/lib/domain/hostname"
 import {
@@ -39,7 +40,6 @@ import {
   serviceSchema,
   startDateWarning,
   type ClientInput,
-  type Currency,
   type NewClientInput,
   type ServiceInput,
 } from "@/lib/domain/validation"
@@ -67,8 +67,8 @@ function looseResolver(resolver: unknown): Resolver<FieldValues> {
 /** Add client (client + first service) or edit client details (docs/06 §4.6). */
 export function ClientForm(
   props:
-    | { mode: "new"; defaultValues: NewClientInput; currencies: readonly Currency[] }
-    | { mode: "edit"; clientId: number; defaultValues: ClientInput }
+    | { mode: "new"; defaultValues: NewClientInput; currencies: readonly string[] }
+    | { mode: "edit"; clientId: number; defaultValues: ClientInput; currencies: readonly string[] }
 ) {
   const isNew = props.mode === "new"
   const form = useForm<FieldValues>({
@@ -95,7 +95,7 @@ export function ClientForm(
           title="Client details"
           description="Who the reminders go to. Add an email, a WhatsApp number, or both."
         >
-          <ClientFields prefix={isNew ? "client." : ""} />
+          <ClientFields prefix={isNew ? "client." : ""} currencies={props.currencies} />
         </Section>
         {props.mode === "new" && (
           <Section
@@ -121,7 +121,7 @@ export function ServiceForm(
     | { mode: "edit"; serviceId: number; clientId: number; defaultValues: ServiceInput }
   ) & {
     /** Enabled currencies (plus the service's current one), from currencyOptions(). */
-    currencies: readonly Currency[]
+    currencies: readonly string[]
   }
 ) {
   const form = useForm<FieldValues>({
@@ -238,8 +238,15 @@ function useField(prefix: string, key: string) {
   return { name, id, error }
 }
 
-function ClientFields({ prefix }: { prefix: string }) {
-  const { register, control } = useFormContext()
+function ClientFields({
+  prefix,
+  currencies,
+}: {
+  prefix: string
+  currencies: readonly string[]
+}) {
+  const { register, control, getFieldState, setValue } = useFormContext()
+  const currency = useField(prefix, "currency")
   const name = useField(prefix, "name")
   const company = useField(prefix, "company")
   const email = useField(prefix, "email")
@@ -330,6 +337,51 @@ function ClientFields({ prefix }: { prefix: string }) {
         />
       </FormField>
       <FormField
+        id={currency.id}
+        label="Currency"
+        required
+        error={currency.error}
+        help="New services, invoices and payments for this client start in it."
+        className="sm:col-span-2"
+      >
+        <Controller
+          control={control}
+          name={currency.name}
+          render={({ field }) => (
+            <Select
+              value={field.value as string}
+              onValueChange={(code) => {
+                field.onChange(code)
+                // Adding a client: the first service follows until it's changed by hand.
+                if (prefix === "client." && !getFieldState("service.currency").isDirty)
+                  setValue("service.currency", code)
+              }}
+            >
+              <SelectTrigger
+                id={currency.id}
+                ref={field.ref}
+                onBlur={field.onBlur}
+                aria-invalid={!!currency.error}
+                aria-describedby={fieldDescribedBy(currency.id, {
+                  error: currency.error,
+                  help: true,
+                })}
+                className="w-full sm:w-80"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {currencies.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {currencyLabel(c)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </FormField>
+      <FormField
         id={notes.id}
         label="Notes"
         error={notes.error}
@@ -378,7 +430,7 @@ function ServiceFields({
 }: {
   prefix: string
   autoRenewal?: boolean
-  currencies: readonly Currency[]
+  currencies: readonly string[]
 }) {
   const { register, control, setValue, getValues, formState } = useFormContext()
   const domain = useField(prefix, "domain")

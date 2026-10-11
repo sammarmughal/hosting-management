@@ -103,7 +103,7 @@ export default async function DashboardPage() {
             <span className="flex flex-col">
               {expected.map((e) => (
                 <span key={e.currency} className="truncate">
-                  <MoneyValue currency={e.currency} amount={formatAmount(e.total)} />
+                  <MoneyValue currency={e.currency} amount={formatAmount(e.total, e.currency)} />
                 </span>
               ))}
             </span>

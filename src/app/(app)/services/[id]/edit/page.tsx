@@ -4,7 +4,7 @@ import { notFound } from "next/navigation"
 import { ServiceForm } from "@/components/client-form"
 import { PageHeader } from "@/components/page-header"
 import { formatAmount } from "@/lib/domain/money"
-import { currencyOptions, type Currency } from "@/lib/domain/validation"
+import { currencyOptions } from "@/lib/domain/currency"
 import { getService, getSettings } from "@/lib/data"
 
 type Props = { params: Promise<{ id: string }> }
@@ -35,8 +35,8 @@ export default async function EditServicePage({ params }: Props) {
           planLabel: s.planLabel ?? "",
           startDate: s.startDate,
           renewalDate: s.renewalDate,
-          chargeAmount: formatAmount(s.chargeAmount),
-          currency: s.currency as Currency,
+          chargeAmount: formatAmount(s.chargeAmount, s.currency),
+          currency: s.currency,
           remindersEnabled: s.remindersEnabled,
           notes: s.notes ?? "",
         }}

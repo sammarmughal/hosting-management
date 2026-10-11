@@ -66,7 +66,7 @@ export async function requireAdmin(): Promise<{ admin: Admin; session: Session }
 - The QR code is generated **on our server** with `qrcode` → an SVG string rendered in the page. Never use an external QR service.
 - Recovery codes: 8 codes of the form `xxxxx-xxxxx`, stored as argon2 hashes, each usable once, and they can be regenerated in Settings.
 
-## 4. Brute-force protection (`lib/server/throttle.ts`, DB-backed since serverless has no shared memory)
+## 4. Brute-force protection (`lib/server/throttle.ts`, DB-backed so limits survive app restarts)
 
 | Rule | Limit | Lockout |
 |------|-------|---------|
@@ -75,7 +75,7 @@ export async function requireAdmin(): Promise<{ admin: Admin; session: Session }
 | Failed TOTP/recovery per session | 5 (`sessions.totpFailures`) | Session deleted → /login |
 | Failed attempts per IP in 24 h | 20 | 24 h |
 
-- IP: from the header named by `TRUSTED_IP_HEADER` (default `x-forwarded-for`, first value). Only trust a header your host's proxy sets itself; verify it after deploy (docs/11 §5).
+- IP: from the header named by `TRUSTED_IP_HEADER` (default `x-forwarded-for`, first value). Only trust a header your host's proxy sets itself; verify it after deploy (docs/11 §7).
 - Record every attempt. Add a fixed 300 ms delay on failure.
 - Email the admin after 10 failures in 1 hour ("Unusual login activity").
 
@@ -83,7 +83,7 @@ export async function requireAdmin(): Promise<{ admin: Admin; session: Session }
 
 - **Server Actions:** Next.js compares the `Origin` header with the host and rejects cross-site POSTs. Keep that protection on and set `experimental.serverActions.allowedOrigins` only if a custom domain proxy needs it.
 - **Session cookie** `SameSite=Strict` is a second layer.
-- **Route handlers** (`/api/*`) are GET downloads only and change no state. If a POST route handler is ever added, it must check `Origin` === `APP_URL`.
+- **Route handlers** (`/api/*`) are GET downloads only and change no state. If a POST route handler is ever added, it must check `Origin` === `APP_URL`. The one exception is `/api/cron/check` (GET or POST): it uses no cookie and requires `Authorization: Bearer <CRON_SECRET>`, and it only runs the idempotent check.
 - **No state changes in GET requests or during page render**, except the reminder check. That runs during the dashboard render by design, and it is idempotent and safe.
 
 ## 6. Injection and output
@@ -114,8 +114,9 @@ X-Robots-Tag: noindex, nofollow
 
 ## 8. Platform hardening
 
-- **Vercel:** turn on **Deployment Protection** for Preview deployments (so preview URLs are not public). Keep env vars in Vercel → Settings → Environment Variables (Production only for secrets). Don't expose any env var with the `NEXT_PUBLIC_` prefix except harmless ones (none are needed).
-- **Hostinger Node.js:** keep `.env` outside any public folder, and run `node .next/standalone/server.js` behind Hostinger's proxy with HTTPS enabled.
+- **Hostinger Node.js** (the only host, owner decision, 11 Oct 2026): keep `.env` outside any public folder, and run `node .next/standalone/server.js` behind Hostinger's proxy with HTTPS enabled. Don't expose any env var with the `NEXT_PUBLIC_` prefix except harmless ones (none are needed).
+- **No public test copies:** test changes locally, or on a separate Hostinger staging subdomain against a Neon branch database. Never test on production data.
+- **Daily check:** the hPanel cron job calls `/api/cron/check` with `Authorization: Bearer <CRON_SECRET>`. Keep `CRON_SECRET` long and random, and only in the env and the cron command (docs/11 §4).
 - `NODE_ENV=production` → the Next.js error overlay is off, and errors are logged server-side. Users see `error.tsx` with no stack trace.
 - `FAKE_TODAY` is ignored when `NODE_ENV === 'production'`.
 - `/api/health` returns only `ok`.
@@ -131,7 +132,7 @@ X-Robots-Tag: noindex, nofollow
 
 | Secret | Where |
 |--------|-------|
-| `DATABASE_URL`, `DIRECT_URL`, `APP_KEY` | Env vars (Vercel dashboard / Hostinger env). Never in git. `.env.example` has placeholders |
+| `DATABASE_URL`, `DIRECT_URL`, `APP_KEY` | Env vars (Hostinger env). Never in git. `.env.example` has placeholders |
 | SMTP password | `settings.smtp_password_enc` (AES-256-GCM with APP_KEY). The UI never shows it back (empty field = unchanged) |
 | TOTP secret | `admins.totp_secret_enc` (encrypted) |
 
@@ -148,9 +149,9 @@ The Settings → Security tab shows the last 20 login events and the active sess
 - [ ] Every `(app)` page redirects to `/login` when logged out, including direct URLs and the browser back button after logout.
 - [ ] After the password step, typing `/dashboard` → redirected (stage `password_ok` is not enough).
 - [ ] Calling any Server Action without a session (e.g. a replayed request with the cookie removed) → rejected.
-- [ ] The 6th wrong password → lockout, and it works across different serverless instances (DB-backed).
+- [ ] The 6th wrong password → lockout, and it still holds after an app restart (DB-backed).
 - [ ] A client name `<img src=x onerror=alert(1)>` is shown as text everywhere, including the template preview.
 - [ ] The CSP header is present, and there are no CSP errors in the console on any page.
-- [ ] Preview deployments on Vercel are protected, and there is no `NEXT_PUBLIC_` secret in the JS bundle (search the build output).
+- [ ] No test or staging copy uses production data, and there is no `NEXT_PUBLIC_` secret in the JS bundle (search the build output).
 - [ ] HTTPS only, and the HSTS header is present.
 - [ ] `robots.txt` disallows everything, and the `X-Robots-Tag` header is present.

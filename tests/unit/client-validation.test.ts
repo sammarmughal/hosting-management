@@ -37,6 +37,7 @@ const client: ClientInput = {
   company: "",
   email: "Info@NoorDental.pk ",
   phone: "0321 4455667",
+  currency: "PKR",
   notes: "",
 }
 
@@ -49,8 +50,17 @@ describe("clientSchema", () => {
       email: "info@noordental.pk",
       phone: "923214455667",
       address: null,
+      currency: "PKR",
       notes: null,
     })
+  })
+
+  it("needs a known ISO currency and upper-cases it", () => {
+    expect(clientSchema.parse({ ...client, currency: "aed" }).currency).toBe("AED")
+    const r = clientSchema.safeParse({ ...client, currency: "XYZ" })
+    expect(r.success).toBe(false)
+    if (!r.success) expect(fieldErrorsFrom(r.error).currency).toBe("Choose a currency")
+    expect(clientSchema.safeParse({ ...client, currency: "" }).success).toBe(false)
   })
 
   it("keeps an optional address, trimmed, and caps its length", () => {
@@ -123,7 +133,7 @@ describe("serviceSchema", () => {
       ...service,
       domain: "not a domain",
       chargeAmount: "abc",
-      currency: "INR",
+      currency: "INX",
     })
     expect(r.success).toBe(false)
     if (!r.success) {
@@ -133,6 +143,26 @@ describe("serviceSchema", () => {
         "domain",
       ])
     }
+  })
+
+  it("accepts any ISO currency, not just a fixed list", () => {
+    expect(serviceSchema.parse({ ...service, currency: "inr" }).currency).toBe("INR")
+    expect(serviceSchema.safeParse({ ...service, currency: "SAR" }).success).toBe(true)
+  })
+
+  it("limits decimals to the currency's minor unit", () => {
+    const issue = (chargeAmount: string, currency: string) => {
+      const r = serviceSchema.safeParse({ ...service, chargeAmount, currency })
+      return r.success ? null : fieldErrorsFrom(r.error).chargeAmount
+    }
+    expect(issue("8750.50", "PKR")).toBe("PKR amounts can’t have decimals")
+    expect(issue("8750.00", "PKR")).toBeNull()
+    expect(issue("49.99", "USD")).toBeNull()
+    expect(issue("49.999", "USD")).toBe("USD amounts have at most 2 decimals")
+    expect(issue("12.345", "KWD")).toBeNull()
+    expect(issue("12.3456", "KWD")).toBe("Enter an amount like 6500 or 6500.50")
+    expect(issue("1500", "JPY")).toBeNull()
+    expect(issue("1500.5", "JPY")).toBe("JPY amounts can’t have decimals")
   })
 
   it("warns (only) about start dates more than a day ahead", () => {

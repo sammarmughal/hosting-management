@@ -15,7 +15,7 @@ import {
 
 import { formatDatePK } from "@/lib/domain/dates"
 import { hasPaymentInstructions, INVOICE_STATUS_LABEL } from "@/lib/domain/invoices"
-import { formatAmount, formatMoney, toCents } from "@/lib/domain/money"
+import { formatAmount, formatMoney, toUnits } from "@/lib/domain/money"
 import { formatPhone } from "@/lib/domain/whatsapp"
 import type { InvoiceDocumentData } from "@/types/view"
 
@@ -165,8 +165,8 @@ const statusColour = (status: InvoiceDocumentData["status"]) =>
 export function InvoicePdf({ invoice: inv }: { invoice: InvoiceDocumentData }) {
   const seller = inv.seller
   const bill = inv.billTo
-  const hasDiscount = toCents(inv.discount) > 0n
-  const hasTax = toCents(inv.taxAmount) > 0n
+  const hasDiscount = toUnits(inv.discount) > 0n
+  const hasTax = toUnits(inv.taxAmount) > 0n
   const payRows = (
     [
       ["Bank", seller.payment.bankName],
@@ -246,18 +246,18 @@ export function InvoicePdf({ invoice: inv }: { invoice: InvoiceDocumentData }) {
           <View style={s.totals} wrap={false}>
             <View style={s.totalRow}>
               <Text style={s.muted}>Subtotal</Text>
-              <Text style={s.money}>{formatAmount(inv.subtotal)}</Text>
+              <Text style={s.money}>{formatAmount(inv.subtotal, inv.currency)}</Text>
             </View>
             {hasDiscount ? (
               <View style={s.totalRow}>
                 <Text style={s.muted}>Discount</Text>
-                <Text style={s.money}>−{formatAmount(inv.discount)}</Text>
+                <Text style={s.money}>−{formatAmount(inv.discount, inv.currency)}</Text>
               </View>
             ) : null}
             {hasTax ? (
               <View style={s.totalRow}>
                 <Text style={s.muted}>Tax ({formatAmount(inv.taxRate)}%)</Text>
-                <Text style={s.money}>{formatAmount(inv.taxAmount)}</Text>
+                <Text style={s.money}>{formatAmount(inv.taxAmount, inv.currency)}</Text>
               </View>
             ) : null}
             <View style={s.grand}>

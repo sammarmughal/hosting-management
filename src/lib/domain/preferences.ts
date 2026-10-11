@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { DEFAULT_TEMPLATES, type TemplateKey } from "@/lib/domain/default-templates"
-import { CURRENCIES } from "@/lib/domain/validation"
+import { currencySchema, DEFAULT_ENABLED_CURRENCIES } from "@/lib/domain/currency"
 import { normalisePhone } from "@/lib/domain/whatsapp"
 
 const phone = z
@@ -12,13 +12,14 @@ export const businessSchema = z
     businessPhone: phone,
     adminEmail: z.email(),
     adminWhatsapp: phone,
-    defaultCurrency: z.enum(CURRENCIES),
+    defaultCurrency: currencySchema,
     enabledCurrencies: z
-      .array(z.enum(CURRENCIES))
+      .array(currencySchema)
       .min(1, "Turn on at least one currency")
+      .max(60, "Turn on at most 60 currencies")
       .refine((c) => new Set(c).size === c.length, "Currencies must be unique")
-      // Stored in the fixed CURRENCIES order, whatever order they were ticked in.
-      .transform((c) => CURRENCIES.filter((x) => c.includes(x))),
+      // Stored alphabetically, whatever order they were added in.
+      .transform((c) => [...c].sort()),
   })
   .refine((b) => b.enabledCurrencies.includes(b.defaultCurrency), {
     path: ["defaultCurrency"],
@@ -115,7 +116,7 @@ export const INITIAL_PREFERENCES: Preferences = {
     adminEmail: "billing@rehmanweb.pk",
     adminWhatsapp: "0300 1112233",
     defaultCurrency: "PKR",
-    enabledCurrencies: [...CURRENCIES],
+    enabledCurrencies: [...DEFAULT_ENABLED_CURRENCIES].sort(),
   },
   reminders: {
     orange: 30,

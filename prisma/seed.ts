@@ -33,6 +33,16 @@ function minusOneYear(d: ISODate): ISODate {
   return `${py}-${m}-${m === "02" && day === "29" && !leap ? "28" : day}`
 }
 
+/** Most frequent code; ties go to PKR (the default), then alphabetical. */
+function mostUsedCurrency(codes: string[]): string | null {
+  const counts = new Map<string, number>()
+  for (const c of codes) counts.set(c, (counts.get(c) ?? 0) + 1)
+  const ranked = [...counts].sort(
+    ([a, x], [b, y]) => y - x || Number(b === "PKR") - Number(a === "PKR") || a.localeCompare(b)
+  )
+  return ranked[0]?.[0] ?? null
+}
+
 async function seedDefaults() {
   for (const [key, value] of Object.entries(SETTING_DEFAULTS)) {
     await prisma.setting.upsert({ where: { key }, create: { key, value }, update: {} })
@@ -95,6 +105,8 @@ async function seedDemo() {
         email: c.email,
         phone: normalisePhone(c.phone),
         address: c.address ?? null,
+        // Like the migration backfill: the currency most of their services use.
+        currency: mostUsedCurrency(c.services.map((s) => s.currency ?? "PKR")) ?? "PKR",
         notes: c.notes,
       },
     })

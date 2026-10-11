@@ -13,7 +13,15 @@ export async function renewServiceAction(
   input: RenewInput
 ): Promise<ActionResult<{ newRenewalDate: string }>> {
   await requireAdmin()
-  const parsed = renewSchema(today()).safeParse(input)
+  const first = renewSchema(today()).safeParse(input)
+  if (!first.success) return checkFields(first.error)
+  // The payment takes the service's currency, so its decimals apply.
+  const service = await prisma.service.findUnique({
+    where: { id: first.data.serviceId },
+    select: { currency: true },
+  })
+  if (!service) return { ok: false, error: "Service not found." }
+  const parsed = renewSchema(today(), service.currency).safeParse(input)
   if (!parsed.success) return checkFields(parsed.error)
   const newRenewalDate = await renewService(parsed.data)
   if (!newRenewalDate) return { ok: false, error: "Service not found." }
