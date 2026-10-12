@@ -143,14 +143,18 @@ describe.skipIf(!enabled)("invoices (docs/13 §2–§5)", () => {
     // PKR has no minor unit in Intl, so 17% of 8,750 (1,487.50) rounds to 1,488.
     expect(inv).toMatchObject({ subtotal: "8750.000", taxAmount: "1488.000", total: "10238.000" })
 
+    // No logo and no tagline set: the snapshot carries an empty logo and tagline.
+    expect(inv?.seller).toMatchObject({ logo: "", tagline: "" })
+
     // Later settings changes don't touch the snapshot.
-    await updateSettings({ business_name: "Renamed Business" })
+    await updateSettings({ business_name: "Renamed Business", business_tagline: "Product Designer" })
     await prisma.service.update({ where: { id: s.id }, data: { chargeAmount: "9000.00" } })
     expect((await getInvoice(res.id))?.seller.businessName).toBe("Rehman Web Services")
     // …until "Refresh business details" on an unpaid invoice.
     expect((await refreshBusinessDetails(res.id)).ok).toBe(true)
     const refreshed = await getInvoice(res.id)
     expect(refreshed?.seller.businessName).toBe("Renamed Business")
+    expect(refreshed?.seller.tagline).toBe("Product Designer")
     expect(refreshed?.events.map((e) => e.type)).toContain("details_refreshed")
     await updateSettings({ business_name: "Rehman Web Services" })
 
@@ -232,6 +236,31 @@ describe.skipIf(!enabled)("PDF, public link and sharing (docs/13 §7–§10)", (
     const pdf = await renderInvoicePdf(inv!)
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-")
     expect(pdf.length).toBeGreaterThan(5_000)
+  })
+
+  it("renders the wordmark header with no logo: plain, with a tagline, long name, and with a logo", async () => {
+    const s = await service(9)
+    const res = await createInvoiceNow(s.id)
+    if ("error" in res) throw new Error(res.error)
+    const inv = (await getInvoice(res.id))!
+    const PNG_1PX =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+    const variants = [
+      { businessName: "Abdul Rehmaan", tagline: "", logo: "" },
+      { businessName: "Abdul Rehmaan", tagline: "Senior UI/UX & Product Designer", logo: "" },
+      {
+        businessName: "Abdul Rehmaan Design Studio — UI/UX, Product Design & Brand Identity Services (Private) Limited",
+        tagline: "Senior UI/UX & Product Designer · Websites, dashboards and mobile apps",
+        logo: "",
+      },
+      { businessName: "Abdul Rehmaan", tagline: "Designer", logo: PNG_1PX },
+    ]
+    for (const v of variants) {
+      const pdf = await renderInvoicePdf({ ...inv, seller: { ...inv.seller, ...v } })
+      expect(pdf.subarray(0, 5).toString()).toBe("%PDF-")
+      // One A4 page, whatever the header holds.
+      expect(pdf.toString("latin1").match(/\/Type \/Page\b/g)).toHaveLength(1)
+    }
   })
 
   it("serves the invoice by token, rejects others, and regenerating revokes the old link", async () => {

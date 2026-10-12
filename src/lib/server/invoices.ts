@@ -53,6 +53,7 @@ export async function allocateInvoiceNumber(tx: Tx, issueDate: ISODate, prefix: 
 export function sellerSnapshot(s: AppSettings): SellerSnapshot {
   return {
     businessName: s.businessName,
+    tagline: s.businessTagline,
     address: s.invoices.address,
     phone: s.businessPhone,
     email: s.smtp.fromEmail || s.adminEmail,

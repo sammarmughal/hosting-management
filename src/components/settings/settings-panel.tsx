@@ -112,6 +112,14 @@ export function SettingsPanel({
                   onChange={(businessPhone) => update({ businessPhone })}
                 />
                 <SettingInput
+                  id="business-tagline"
+                  label="Tagline"
+                  required={false}
+                  help="Optional. Shown under your business name on invoices and emails, e.g. Senior UI/UX & Product Designer."
+                  value={draft.tagline}
+                  onChange={(tagline) => update({ tagline })}
+                />
+                <SettingInput
                   id="admin-email"
                   label="Admin email"
                   type="email"

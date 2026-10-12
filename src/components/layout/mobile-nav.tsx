@@ -1,7 +1,7 @@
 "use client"
 
 import { AccountRow } from "@/components/layout/account-row"
-import { LogoMark } from "@/components/layout/logo"
+import { BrandMark } from "@/components/layout/brand-mark"
 import { NavLinks } from "@/components/layout/nav-links"
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet"
 import type { ShellSummary } from "@/types/view"
@@ -30,7 +30,7 @@ export function MobileNav({
         className="w-72 gap-0 bg-sidebar pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
       >
         <div className="flex h-14 items-center gap-3 px-5">
-          <LogoMark />
+          <BrandMark brand={summary.brand} />
           <SheetTitle className="text-base">Renewals</SheetTitle>
           <SheetDescription className="sr-only">Main navigation</SheetDescription>
         </div>

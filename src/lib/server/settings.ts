@@ -26,6 +26,8 @@ export interface AppSettings {
   adminName: string
   businessName: string
   businessPhone: string
+  /** Optional; "" when not set. */
+  businessTagline: string
   adminEmail: string
   /** Normalised digits ("923001112233"), "" when not set. */
   adminWhatsapp: string
@@ -91,6 +93,7 @@ export const getAppSettings = cache(async (): Promise<AppSettings> => {
     adminName: admin?.username ?? "Admin",
     businessName: get("business_name"),
     businessPhone: get("business_phone"),
+    businessTagline: get("business_tagline").trim(),
     adminEmail: get("admin_email"),
     adminWhatsapp: get("admin_whatsapp"),
     defaultCurrency,
@@ -157,6 +160,7 @@ export async function getPreferences(): Promise<Preferences> {
   const business: BusinessSettings = {
     businessName: s.businessName,
     businessPhone: s.businessPhone,
+    tagline: s.businessTagline,
     adminEmail: s.adminEmail,
     adminWhatsapp: s.adminWhatsapp ? formatPhone(s.adminWhatsapp) : "",
     defaultCurrency: s.defaultCurrency,

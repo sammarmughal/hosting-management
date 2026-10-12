@@ -3,7 +3,7 @@
 import Link from "next/link"
 
 import { AccountRow } from "@/components/layout/account-row"
-import { LogoMark } from "@/components/layout/logo"
+import { BrandMark } from "@/components/layout/brand-mark"
 import { NavLinks } from "@/components/layout/nav-links"
 import type { ShellSummary } from "@/types/view"
 
@@ -22,7 +22,7 @@ export function Sidebar({
         href="/dashboard"
         className="flex h-15 shrink-0 items-center gap-3 px-5 outline-none focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:ring-inset max-lg:justify-center max-lg:px-0"
       >
-        <LogoMark />
+        <BrandMark brand={summary.brand} />
         <span className="text-base font-semibold text-ink max-lg:sr-only">Renewals</span>
       </Link>
       <nav aria-label="Main" className="flex-1 overflow-y-auto px-3 py-2">

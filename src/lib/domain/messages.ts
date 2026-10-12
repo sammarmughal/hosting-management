@@ -29,6 +29,8 @@ export interface MessageService {
 export interface MessageBusiness {
   businessName: string
   businessPhone: string
+  /** Optional line under the name in the email header. */
+  businessTagline?: string
 }
 
 export interface Template {
@@ -118,7 +120,7 @@ export function clientEmail(
     const link = escapeHtml(invoice.link)
     body += `\n<p>Invoice <b>${escapeHtml(invoice.number)}</b> is attached. You can also view it online: <a href="${link}">${link}</a></p>`
   }
-  return { subject, html: wrapEmail(body, b.businessName), text: htmlToText(body) }
+  return { subject, html: wrapEmail(body, b), text: htmlToText(body) }
 }
 
 /** The "Invoice" template (docs/13 §10), for Share invoice. */
@@ -132,7 +134,7 @@ export function invoiceEmail(
   const vars = clientVars(s, b, today, invoice)
   const subject = oneLine(renderTemplate(pickSection(t.subject ?? "", s.daysLeft), vars, { mode: "text" }))
   const body = renderForDays(t.body, s.daysLeft, vars, { mode: "html" })
-  return { subject, body, html: wrapEmail(body, b.businessName), text: htmlToText(body) }
+  return { subject, body, html: wrapEmail(body, b), text: htmlToText(body) }
 }
 
 export function invoiceWhatsappText(
@@ -245,7 +247,7 @@ export function adminEmail(
   const textVars = { ...vars, summary_table: summaryList(services) }
   return {
     subject,
-    html: wrapEmail(body, b.businessName),
+    html: wrapEmail(body, b),
     text: htmlToText(renderTemplate(t.body, textVars, { mode: "html", raw: ["summary_table"] })),
   }
 }
@@ -265,13 +267,34 @@ export function adminWhatsappText(
 
 /* Email wrapper and plain text (docs/08 §2) -------------------------- */
 
-/** 600 px card, business name header in brand-700, small grey footer. Inline CSS only. */
-export function wrapEmail(bodyHtml: string, businessName: string) {
-  const name = escapeHtml(oneLine(businessName))
+/** Geist where the reader has it, else the system UI font (no web fonts in email). */
+const WORDMARK_FONT = "Geist,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+
+/**
+ * The header wordmark: the business name as text (there is no logo image in
+ * emails), 19 px semibold in ink, and the tagline under it in muted text only
+ * when one is set.
+ */
+export function emailWordmark(b: { businessName: string; businessTagline?: string }) {
+  const name = escapeHtml(oneLine(b.businessName))
+  const tagline = oneLine(b.businessTagline ?? "")
+  return `<div style="font-family:${WORDMARK_FONT};font-size:19px;line-height:1.3;font-weight:600;letter-spacing:-0.01em;color:#111827">${name}</div>${
+    tagline
+      ? `<div style="font-family:${WORDMARK_FONT};margin-top:2px;font-size:13px;line-height:1.4;color:#6b7280">${escapeHtml(tagline)}</div>`
+      : ""
+  }`
+}
+
+/** 600 px card, the business wordmark as header, small grey footer. Inline CSS only. */
+export function wrapEmail(
+  bodyHtml: string,
+  b: { businessName: string; businessTagline?: string }
+) {
+  const name = escapeHtml(oneLine(b.businessName))
   return `<!doctype html>
 <html><body style="margin:0;padding:24px 12px;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#111827">
 <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="width:100%;max-width:600px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px">
-<tr><td style="padding:16px 24px;border-bottom:1px solid #e5e7eb;font-size:18px;font-weight:bold;color:#1f4e79">${name}</td></tr>
+<tr><td style="padding:16px 24px;border-bottom:1px solid #e5e7eb;word-break:break-word">${emailWordmark(b)}</td></tr>
 <tr><td style="padding:24px;font-size:15px;line-height:1.6">${bodyHtml}</td></tr>
 <tr><td style="padding:12px 24px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280">This is an automated reminder from ${name}</td></tr>
 </table>

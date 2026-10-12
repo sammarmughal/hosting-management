@@ -73,6 +73,10 @@ const s = StyleSheet.create({
   // Left-aligned with the text below (contain alone centres it in its box).
   logo: { height: 34, maxWidth: 140, objectFit: "contain", objectPositionX: 0, marginBottom: 10 },
   sellerName: { fontSize: 11, fontWeight: 600 },
+  // No logo: the business name is the logo (14.5 pt ≈ 19 px), tagline under it.
+  wordmark: { fontSize: 14.5, lineHeight: 1.25, fontWeight: 600, color: C.ink, letterSpacing: -0.15 },
+  tagline: { fontSize: 9.5, lineHeight: 1.35, color: C.muted, marginTop: 2 },
+  wordmarkBlock: { marginBottom: 8 },
   muted: { color: C.muted },
   right: { width: "45%", alignItems: "flex-end" },
   // Explicit line heights: the page's 1.4 multiplier gave the 20 pt title a
@@ -188,9 +192,18 @@ export function InvoicePdf({ invoice: inv }: { invoice: InvoiceDocumentData }) {
         {/* 1. Seller | title, number, dates, status */}
         <View style={s.header}>
           <View style={s.seller}>
-            {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt */}
-            {seller.logo ? <Image src={seller.logo} style={s.logo} /> : null}
-            <Text style={s.sellerName}>{seller.businessName}</Text>
+            {seller.logo ? (
+              <>
+                {/* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt */}
+                <Image src={seller.logo} style={s.logo} />
+                <Text style={s.sellerName}>{seller.businessName}</Text>
+              </>
+            ) : (
+              <View style={s.wordmarkBlock}>
+                <Text style={s.wordmark}>{seller.businessName}</Text>
+                {seller.tagline ? <Text style={s.tagline}>{seller.tagline}</Text> : null}
+              </View>
+            )}
             {seller.address ? <Text style={s.muted}>{seller.address}</Text> : null}
             {seller.phone ? <Text style={s.muted}>{seller.phone}</Text> : null}
             {seller.email ? <Text style={s.muted}>{seller.email}</Text> : null}

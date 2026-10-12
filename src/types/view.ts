@@ -175,8 +175,17 @@ export interface ActivityItem {
   text: string
 }
 
+/** The business's mark in the app shell (sidebar, drawer). */
+export interface ShellBrand {
+  /** "AR" from "Abdul Rehmaan"; "" when the name has no letters. */
+  initials: string
+  /** Short hash of the uploaded logo (cache key for /api/brand/logo); null = no logo. */
+  logoVersion: string | null
+}
+
 export interface ShellSummary {
   adminName: string
+  brand: ShellBrand
   /** Reminder rows still needing action (pending, failed, opened). */
   remindersDue: number
   /** True when any of those rows belongs to an expired service. */

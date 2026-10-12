@@ -10,6 +10,8 @@ export const businessSchema = z
   .object({
     businessName: z.string().trim().min(2).max(150),
     businessPhone: phone,
+    /** Optional line under the business name on invoices and emails. */
+    tagline: z.string().trim().max(100, "Keep the tagline under 100 characters"),
     adminEmail: z.email(),
     adminWhatsapp: phone,
     defaultCurrency: currencySchema,
@@ -113,6 +115,7 @@ export const INITIAL_PREFERENCES: Preferences = {
   business: {
     businessName: "Rehman Web Services",
     businessPhone: "0300 1112233",
+    tagline: "",
     adminEmail: "billing@rehmanweb.pk",
     adminWhatsapp: "0300 1112233",
     defaultCurrency: "PKR",

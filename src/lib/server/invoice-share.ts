@@ -158,7 +158,7 @@ export async function shareByEmail(
     await sendMail(settings, {
       to,
       subject: oneLine(edited.subject),
-      html: wrapEmail(textToHtml(text), settings.businessName),
+      html: wrapEmail(textToHtml(text), settings),
       text,
       attachments: [
         {

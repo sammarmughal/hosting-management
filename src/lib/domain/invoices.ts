@@ -158,6 +158,8 @@ export function invoiceFilename(number: string, domain: string) {
 
 export interface SellerSnapshot {
   businessName: string
+  /** Shown under the name when there's no logo; missing on invoices issued before it existed. */
+  tagline?: string
   address: string
   phone: string
   email: string

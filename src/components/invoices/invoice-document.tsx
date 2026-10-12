@@ -35,11 +35,21 @@ export function InvoiceDocument({
       {/* 1. Seller | Invoice title, number, dates, status */}
       <header className="flex flex-col gap-6 sm:flex-row sm:justify-between">
         <div className="min-w-0">
-          {s.logo && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={s.logo} alt="" className="mb-3 h-10 w-auto max-w-40 object-contain" />
+          {s.logo ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={s.logo} alt="" className="mb-3 h-10 w-auto max-w-40 object-contain" />
+              <p className="font-semibold break-words">{s.businessName}</p>
+            </>
+          ) : (
+            // No logo: the business name is the wordmark, with the tagline under it.
+            <div className="mb-2">
+              <p className="text-[19px] leading-tight font-semibold tracking-[-0.01em] text-ink break-words">
+                {s.businessName}
+              </p>
+              {s.tagline && <p className="mt-0.5 text-sm text-ink-muted break-words">{s.tagline}</p>}
+            </div>
           )}
-          <p className="font-semibold break-words">{s.businessName}</p>
           <div className="mt-1 space-y-0.5 text-sm text-ink-muted">
             {s.address && <p className="whitespace-pre-line">{s.address}</p>}
             {s.phone && <p>{s.phone}</p>}

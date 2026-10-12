@@ -102,7 +102,7 @@ The password is stored encrypted and never shown again (leave the field empty to
 
 ## Configure invoices
 
-**Settings → Business**: business name, phone, admin email and WhatsApp; the **currencies** you bill in (any ISO 4217 currency, from a searchable list; PKR, USD and AED are on by default) and the default currency for new clients. A currency used by a client or service can't be turned off.
+**Settings → Business**: business name, an optional **tagline** (e.g. "Senior UI/UX & Product Designer"), phone, admin email and WhatsApp; the **currencies** you bill in (any ISO 4217 currency, from a searchable list; PKR, USD and AED are on by default) and the default currency for new clients. A currency used by a client or service can't be turned off.
 
 **Currency** (docs/13 §6): no conversion. Each client has their own currency (e.g. PKR for a Pakistani client, AED for a UAE client); new services, and so their invoices and payments, start in it, and a service can override it. Decimal places follow the currency (`PKR 6,500`, `USD 49.99`, `KWD 12.500`). Totals are always shown per currency. In the CSV import, `client_currency` blank means the app default and `currency` blank means the client's currency.
 
@@ -110,7 +110,7 @@ The password is stored encrypted and never shown again (leave the field empty to
 
 - **Number prefix** (default `INV`) → numbers like `INV-2026-0012`, a new sequence each year. The **next number** can be set until the first invoice exists.
 - **Create invoices** 15 or 30 days (default) before the renewal date, or a custom number of days. The check creates one invoice per active service per renewal; cancelled services never get one. "Create invoice now" on a service card works any time.
-- **Logo** (PNG or JPEG under 200 KB), **business address**, **NTN**, **payment instructions** (bank, account title, account number / IBAN, JazzCash / Easypaisa) and the **footer note**: printed on the invoice and the PDF.
+- **Logo** (optional, PNG or JPEG under 200 KB; without one the business name and tagline are shown as a text wordmark on the invoice, PDF, public page and emails, and the sidebar shows the business initials), **business address**, **NTN**, **payment instructions** (bank, account title, account number / IBAN, JazzCash / Easypaisa) and the **footer note**: printed on the invoice and the PDF.
 - **Tax** on/off and rate, applied after any discount.
 
 Invoices keep a copy of these details from the moment they're created, so later changes don't alter old invoices. Fill in Settings → Invoices **before** the first check that creates invoices.

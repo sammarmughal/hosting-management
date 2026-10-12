@@ -61,6 +61,7 @@ export async function savePreferencesAction(
       await updateSettings({
         business_name: p.data.businessName,
         business_phone: p.data.businessPhone,
+        business_tagline: p.data.tagline,
         admin_email: p.data.adminEmail.toLowerCase(),
         admin_whatsapp: normalisePhone(p.data.adminWhatsapp) ?? "",
         default_currency: p.data.defaultCurrency,

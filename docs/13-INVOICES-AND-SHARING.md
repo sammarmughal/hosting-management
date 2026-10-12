@@ -98,6 +98,7 @@ Confirmed with the client on 11 Oct 2026: **no conversion. Each client has their
 - A4, one page for normal invoices. Fonts: Geist (register TTF files; if the `geist` package only ships woff2, add the TTF files under `src/assets/fonts`).
 - Layout, top to bottom:
   1. Logo + business name, address, phone, email, NTN (optional) on the left; "Invoice" title, number, issue date, due date and status on the right.
+     **No logo** (the owner's choice, 12 Oct 2026: the business name is the logo): the business name is a text wordmark in the logo position (Geist, about 19 px, weight 600, ink), with the optional **tagline** (Settings → Business) under it in muted text. No image box, placeholder or gap. The same wordmark heads the public page and every email; the app's sidebar shows the business initials (e.g. "AR") in a small square instead of a logo.
   2. "Bill to": client name, company, email, phone.
   3. Items table: Description, Period, Qty, Amount (right-aligned, tabular).
   4. Totals: Subtotal, Discount (if any), Tax (if any), **Total** with currency.

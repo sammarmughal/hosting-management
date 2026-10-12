@@ -1,9 +1,12 @@
 import "server-only"
 
+import { createHash } from "node:crypto"
+
 // Pages read data only through src/lib/data.ts (docs/06 §7.2), which
 // re-exports this file. Same exports and signatures as the Phase 1 mock
 // queries, implemented with Prisma and returning the view-model types.
 import type { Prisma, ReminderChannel } from "@/generated/prisma/client"
+import { brandInitials } from "@/lib/domain/brand"
 import { addDays, formatDatePK, todayPK } from "@/lib/domain/dates"
 import { adminWhatsappText } from "@/lib/domain/messages"
 import {
@@ -92,6 +95,12 @@ export async function getShellSummary(): Promise<ShellSummary> {
   ])
   return {
     adminName: s.adminName,
+    brand: {
+      initials: brandInitials(s.businessName),
+      logoVersion: s.invoices.logo
+        ? createHash("sha256").update(s.invoices.logo).digest("hex").slice(0, 12)
+        : null,
+    },
     remindersDue: queue.length,
     remindersOverdue: queue.some((q) => q.service.daysLeft < 0),
     unreadNotifications: unread,

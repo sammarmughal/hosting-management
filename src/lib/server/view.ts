@@ -58,7 +58,11 @@ export async function viewContext(): Promise<ViewContext> {
   return {
     today: clockToday(),
     thresholds: s.thresholds,
-    business: { businessName: s.businessName, businessPhone: s.businessPhone },
+    business: {
+      businessName: s.businessName,
+      businessPhone: s.businessPhone,
+      businessTagline: s.businessTagline,
+    },
     whatsappTemplate,
   }
 }

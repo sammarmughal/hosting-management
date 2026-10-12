@@ -11,6 +11,8 @@ import { DEFAULT_STAGES } from "@/lib/domain/stages"
 export const SETTING_DEFAULTS = {
   business_name: "Our Hosting",
   business_phone: "",
+  // Optional line under the business name (wordmark) on invoices and emails.
+  business_tagline: "",
   admin_email: "",
   admin_whatsapp: "",
   default_currency: "PKR",
