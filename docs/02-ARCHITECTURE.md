@@ -7,8 +7,8 @@
 | Framework | **Next.js (App Router, latest stable) + TypeScript (strict)** | Modern React UI, server components, server actions |
 | Runtime | Node.js 20 LTS+ (**Node runtime only, not Edge**) | Needed for Prisma, argon2 and nodemailer |
 | Hosting | **Hostinger Node.js hosting** only (owner decision, 11 Oct 2026) | `output: 'standalone'` build, started with `node .next/standalone/server.js`. Production URL: `https://renewals.abdulrehmaan.net` |
-| Database | **PostgreSQL on Neon** (serverless Postgres, TLS) | Managed Postgres with TLS and point-in-time restore. The free tier is enough to start |
-| ORM | **Prisma** | Typed queries, migrations, seed script |
+| Database | **MySQL/MariaDB on Hostinger**, on the same server as the app (host `localhost`) (owner decision, 13 Oct 2026) | Included in the Hostinger plan, with no network hop and no second provider. Hostinger takes the automatic backups |
+| ORM | **Prisma** (`provider = "mysql"`) + **@prisma/adapter-mariadb** | Typed queries, migrations, seed script. The driver pool is capped at 5 connections (`src/lib/db-config.ts`) because shared hosting limits connections per database user |
 | Styling | **Tailwind CSS** + CSS variables (design tokens from `06-UI-SPEC.md`) | Fast to build and consistent |
 | UI primitives | **shadcn/ui** (copied into the repo) + **lucide-react** icons | Accessible dialogs, dropdowns and tabs. No runtime CDN |
 | Forms/validation | **zod** (+ `react-hook-form` on the bigger forms) | One schema validates on both client and server |
@@ -19,8 +19,11 @@
 | Dates | Date-only ISO strings + `Intl` with `Asia/Karachi` (see `04-BUSINESS-LOGIC.md` §1) | No timezone bugs on UTC servers |
 | Tests | **Vitest** (unit/integration) + **Playwright** (e2e smoke) | |
 
-> **Why not MySQL on Hostinger?** Neon gives managed backups, point-in-time restore and branch databases (handy for dev and staging), and the app uses Prisma/Postgres features such as advisory locks.
-> *If you later want the database on Hostinger too:* change the Prisma `provider` to `mysql`, point `DATABASE_URL` to the Hostinger database, and re-run `prisma migrate`. The schema in `03-DATABASE.md` is written to be portable.
+> **Database decision (13 Oct 2026).** The first plan used Neon Postgres. The client chose to keep everything on Hostinger, so the database is the plan's MySQL/MariaDB, and Neon is not used. There was no real data yet, so the migrations start fresh. Things the code relies on:
+> - **MariaDB 10.6+ or MySQL 8.0+**, for `SELECT … FOR UPDATE SKIP LOCKED`.
+> - **Timestamps** are `DATETIME(3)` in UTC. The adapter converts them, and every pool connection runs `SET time_zone = '+00:00'`.
+> - **Text columns** are `utf8mb4` / `utf8mb4_unicode_ci`, which makes search case-insensitive (and accent-insensitive) with no `ILIKE`.
+> - **Transactions** that read after taking a lock run at READ COMMITTED, like Postgres did.
 
 ## 2. The "no-cron" design
 
@@ -33,8 +36,9 @@ app/(app)/dashboard/page.tsx   (Server Component, dynamic = 'force-dynamic')
         ▼
 lib/server/reminders.ts → runCheck()
    ├─ if now − settings.last_check_at < check_interval_minutes → skip
-   ├─ prisma.$transaction:
-   │    ├─ pg_try_advisory_xact_lock(4242)  (skip if another tab is checking)
+   ├─ prisma.$transaction (READ COMMITTED):
+   │    ├─ SELECT … FROM app_locks WHERE name='check' FOR UPDATE SKIP LOCKED
+   │    │     (no row back → another tab/cron is checking → skip; released at commit)
    │    ├─ load active services with reminders_enabled and days_left <= first stage
    │    ├─ compute due stage per service (lib/domain/stages.ts)
    │    ├─ mark superseded/old-cycle reminders 'skipped'
@@ -51,7 +55,7 @@ Client component <ReminderQueue/>:
   [Open WhatsApp]   → <a href="https://wa.me/…" target="_blank"> + markOpenedAction(id)
 ```
 
-- There is **no background process**. Everything runs inside requests: the admin's own, plus **one daily scheduled request** (owner decision, 11 Oct 2026): a Hostinger hPanel cron job calls `POST /api/cron/check` with curl and `Authorization: Bearer <CRON_SECRET>` at 09:00 PKT (the endpoint also accepts GET). It runs the same idempotent `runCheck({ force: true })` under the same advisory lock (docs/11 §4).
+- There is **no background process**. Everything runs inside requests: the admin's own, plus **one daily scheduled request** (owner decision, 11 Oct 2026): a Hostinger hPanel cron job calls `POST /api/cron/check` with curl and `Authorization: Bearer <CRON_SECRET>` at 09:00 PKT (the endpoint also accepts GET). It runs the same idempotent `runCheck({ force: true })` under the same `app_locks` row lock (docs/11 §4).
 - Sending one email per action call keeps each request short.
 
 ## 3. Folder structure
@@ -125,7 +129,8 @@ hosting-renewal/
 │   │   │   ├── money.ts            ← formatMoney (Decimal-safe)
 │   │   │   └── validation.ts       ← zod schemas (client, service, payment, settings)
 │   │   ├── server/                 ← 'server-only' modules
-│   │   │   ├── db.ts               ← Prisma client singleton
+│   │   │   ├── db.ts               ← Prisma client singleton (MariaDB adapter)
+│   │   │   ├── db-config.ts        ← mysql:// URL → pool config (5 connections, UTC session)
 │   │   │   ├── session.ts          ← create/read/destroy session, requireAdmin()
 │   │   │   ├── auth.ts             ← password verify, TOTP, recovery codes
 │   │   │   ├── throttle.ts         ← login attempt limits (DB-backed)
@@ -167,9 +172,12 @@ hosting-renewal/
 ## 5. Environment variables (`.env.example`)
 
 ```dotenv
-# Database (Neon: use the pooled URL for the app, the direct URL for migrations)
-DATABASE_URL="postgresql://user:pass@ep-xxx-pooler.region.aws.neon.tech/hrm?sslmode=require"
-DIRECT_URL="postgresql://user:pass@ep-xxx.region.aws.neon.tech/hrm?sslmode=require"
+# Database: MySQL/MariaDB, one URL for the app and the migrations.
+# Production (hPanel database, same server): mysql://u123456789_hrm:PASSWORD@localhost:3306/u123456789_hrm
+# Local: MariaDB 11.8 via Docker (npm run db:up) or portable (npm run db:local:start). Pool capped at 5 in code (db-config.ts).
+DATABASE_URL="mysql://hrm:hrm@localhost:3306/hrm"
+TEST_DATABASE_URL="mysql://hrm:hrm@localhost:3306/hrm_test"
+E2E_DATABASE_URL="mysql://hrm:hrm@localhost:3306/hrm_e2e"
 
 APP_URL="https://renewals.abdulrehmaan.net"
 APP_KEY="base64:…32 random bytes…"     # encrypts TOTP secrets + SMTP password. Generate: openssl rand -base64 32

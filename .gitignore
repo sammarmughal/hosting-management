@@ -163,13 +163,18 @@ vite.config.ts.timestamp-*
 /screenshots
 /tests/e2e/.auth
 
-# test / local databases and dumps (Postgres data dirs live outside the repo)
+# Local MariaDB data: the portable server (npm run db:local:start) keeps it
+# here; with Docker it lives in a volume.
+/.local-db/
+
+# test / local databases and dumps
 *.db
 *.db-journal
 *.sqlite
 *.sqlite3
 *.sql
 !prisma/migrations/**/*.sql
+!docker/*.sql
 /pgdata
 /.pgdata
 

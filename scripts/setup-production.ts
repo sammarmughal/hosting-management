@@ -2,7 +2,7 @@
 //
 // First-time production setup, run once from your machine (or over SSH):
 //   1. checks the production environment variables,
-//   2. applies the migrations (prisma migrate deploy, DIRECT_URL),
+//   2. applies the migrations (prisma migrate deploy, DATABASE_URL),
 //   3. creates the single admin from ADMIN_USERNAME / ADMIN_EMAIL /
 //      ADMIN_PASSWORD, or by asking in the terminal.
 // It never loads demo or seed data: settings and message templates fall back
@@ -11,10 +11,11 @@
 import { spawnSync } from "node:child_process"
 import { existsSync } from "node:fs"
 
-import { PrismaPg } from "@prisma/adapter-pg"
+import { PrismaMariaDb } from "@prisma/adapter-mariadb"
 import { z } from "zod"
 
 import { PrismaClient } from "@/generated/prisma/client"
+import { mariadbConfig } from "@/lib/db-config"
 
 import {
   adminPasswordProblem,
@@ -53,7 +54,7 @@ async function main() {
   if (process.env.SEED_DEMO === "1")
     console.log("Note: SEED_DEMO is ignored here; no demo data is loaded.")
 
-  console.log(`Database:   ${describeDatabase(process.env.DIRECT_URL)}`)
+  console.log(`Database:   ${describeDatabase(process.env.DATABASE_URL)}`)
   console.log(`App URL:    ${process.env.APP_URL}`)
   if (!process.argv.includes("--yes")) {
     if (!interactive) fail("Not a terminal: re-run with --yes to confirm.")
@@ -72,7 +73,7 @@ async function main() {
 
   console.log("\n2/2 Admin account…")
   const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+    adapter: new PrismaMariaDb(mariadbConfig(process.env.DATABASE_URL)),
   })
   try {
     if ((await prisma.admin.count()) > 0) {

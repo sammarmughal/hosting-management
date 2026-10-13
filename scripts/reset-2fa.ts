@@ -1,9 +1,10 @@
 // npm run reset-2fa   (docs/05 §9: emergency, needs database access)
 // Turns two-step verification off and ends all sessions, so it is set up
 // again at the next sign-in.
-import { PrismaPg } from "@prisma/adapter-pg"
+import { PrismaMariaDb } from "@prisma/adapter-mariadb"
 
 import { PrismaClient } from "@/generated/prisma/client"
+import { mariadbConfig } from "@/lib/db-config"
 
 try {
   process.loadEnvFile(".env")
@@ -13,7 +14,7 @@ try {
 
 async function main() {
   const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+    adapter: new PrismaMariaDb(mariadbConfig(process.env.DATABASE_URL)),
   })
   try {
     const { count } = await prisma.admin.updateMany({

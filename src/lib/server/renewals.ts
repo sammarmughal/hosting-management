@@ -69,6 +69,8 @@ export async function renewService(input: RenewData): Promise<ISODate | null> {
       db: tx,
     })
     return newRenewal
-  })
+    // READ COMMITTED: the reads after FOR UPDATE see the latest
+    // committed row, not a snapshot (MySQL's default is REPEATABLE READ).
+  }, { isolationLevel: "ReadCommitted" })
   return result
 }

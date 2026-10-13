@@ -1,22 +1,25 @@
 // npm run backup [-- --env-file .env.production] [--out backups] [--sql]   (docs/11 §6)
 //
-// pg_dump of the database in DIRECT_URL (Neon's direct, non-pooled URL) to a
-// dated file: backups/hrm-YYYY-MM-DD-HHMM.dump (custom format, compressed;
-// restore with pg_restore) or .sql with --sql. Needs pg_dump on the PATH (or
-// PG_DUMP=path), the same major version as the server or newer.
-import { spawnSync } from "node:child_process"
+// Dumps the database in DATABASE_URL with mariadb-dump (or mysqldump) to a
+// dated file: backups/hrm-YYYY-MM-DD-HHMM.sql.gz (gzipped SQL), or plain .sql
+// with --sql. Restore with: gunzip -c file.sql.gz | mariadb -u USER -p DBNAME.
+// Needs the MariaDB/MySQL client tools on the PATH (or MYSQL_DUMP=path), and
+// network access to the database: run it over SSH on the Hostinger server
+// when the host is localhost (docs/11 §6).
+import { spawn } from "node:child_process"
 import {
+  createReadStream,
+  createWriteStream,
   existsSync,
   mkdirSync,
-  openSync,
-  readSync,
-  closeSync,
   statSync,
   unlinkSync,
 } from "node:fs"
 import path from "node:path"
+import { pipeline } from "node:stream/promises"
+import { createGunzip, createGzip } from "node:zlib"
 
-import { backupFileName, libpqUrl } from "./backup-name"
+import { backupFileName, dumpCommand, looksLikeDump } from "./backup-name"
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name)
@@ -28,59 +31,93 @@ function fail(message: string): never {
   process.exit(1)
 }
 
-const envFile = arg("--env-file")
-if (envFile) {
-  if (!existsSync(envFile)) fail(`Env file not found: ${envFile}`)
-  process.loadEnvFile(envFile)
-} else {
-  try {
-    process.loadEnvFile(".env")
-  } catch {
-    // Environment only.
+/** Runs the dump tool, streaming its output (gzipped unless plain) into `file`. */
+function runDump(
+  tool: string,
+  args: string[],
+  password: string,
+  file: string,
+  plain: boolean
+) {
+  return new Promise<number>((resolve, reject) => {
+    const child = spawn(tool, args, {
+      stdio: ["ignore", "pipe", "inherit"],
+      env: { ...process.env, MYSQL_PWD: password },
+    })
+    child.on("error", reject)
+    const out = createWriteStream(file)
+    const done = plain
+      ? pipeline(child.stdout, out)
+      : pipeline(child.stdout, createGzip(), out)
+    child.on("close", (code) => {
+      done.then(() => resolve(code ?? 1), reject)
+    })
+  })
+}
+
+/** The first few hundred characters of the file, gunzipping when needed. */
+async function fileHead(file: string, gz: boolean): Promise<string> {
+  let head = ""
+  const src = createReadStream(file)
+  const stream = gz ? src.pipe(createGunzip()) : src
+  for await (const chunk of stream) {
+    head += chunk.toString()
+    if (head.length >= 400) break
   }
+  src.destroy()
+  return head
 }
 
-const url = process.env.DIRECT_URL || process.env.DATABASE_URL
-if (!url) fail("Set DIRECT_URL (Neon → Connect → direct connection string).")
+async function main() {
+  const envFile = arg("--env-file")
+  if (envFile) {
+    if (!existsSync(envFile)) fail(`Env file not found: ${envFile}`)
+    process.loadEnvFile(envFile)
+  } else {
+    try {
+      process.loadEnvFile(".env")
+    } catch {
+      // Environment only.
+    }
+  }
 
-const sql = process.argv.includes("--sql")
-const outDir = path.resolve(arg("--out") ?? "backups")
-mkdirSync(outDir, { recursive: true })
-const file = path.join(outDir, backupFileName(new Date(), sql ? "sql" : "dump"))
-const pgDump = process.env.PG_DUMP || "pg_dump"
+  const url = process.env.DATABASE_URL
+  if (!url) fail("Set DATABASE_URL (mysql://user:password@host:3306/database).")
+  const { args, password, target } = dumpCommand(url)
 
-const target = new URL(libpqUrl(url))
-console.log(`Backing up ${target.hostname}${target.pathname} → ${file}`)
-const result = spawnSync(
-  pgDump,
-  [
-    `--dbname=${target.toString()}`,
-    `--file=${file}`,
-    `--format=${sql ? "plain" : "custom"}`,
-    "--no-owner",
-    "--no-privileges",
-  ],
-  { stdio: ["ignore", "inherit", "inherit"] }
-)
-if (result.error)
-  fail(
-    `Couldn't run ${pgDump}: ${result.error.message}. Install the PostgreSQL client tools or set PG_DUMP.`
+  const plain = process.argv.includes("--sql")
+  const outDir = path.resolve(arg("--out") ?? "backups")
+  mkdirSync(outDir, { recursive: true })
+  const file = path.join(outDir, backupFileName(new Date(), plain ? "sql" : "sql.gz"))
+  const tools = process.env.MYSQL_DUMP
+    ? [process.env.MYSQL_DUMP]
+    : ["mariadb-dump", "mysqldump"]
+
+  console.log(`Backing up ${target} → ${file}`)
+  let status: number | null = null
+  for (const tool of tools) {
+    try {
+      status = await runDump(tool, args, password, file, plain)
+      break
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
+    }
+  }
+  if (status === null)
+    fail(
+      `Couldn't run ${tools.join(" or ")}. Install the MariaDB client tools or set MYSQL_DUMP.`
+    )
+  if (status !== 0) {
+    if (existsSync(file)) unlinkSync(file)
+    fail(`The dump failed (exit ${status}); no backup was written.`)
+  }
+
+  const size = statSync(file).size
+  if (size === 0 || !looksLikeDump(await fileHead(file, !plain)))
+    fail(`${file} doesn't look like a database dump.`)
+  console.log(
+    `Backup written: ${file} (${(size / 1024).toFixed(0)} KB). Keep a copy off this machine.`
   )
-if (result.status !== 0) {
-  if (existsSync(file)) unlinkSync(file)
-  fail(`pg_dump failed (exit ${result.status}); no backup was written.`)
 }
 
-// A custom-format dump starts with "PGDMP"; anything empty is a failed backup.
-const size = statSync(file).size
-if (!sql) {
-  const fd = openSync(file, "r")
-  const head = Buffer.alloc(5)
-  readSync(fd, head, 0, 5, 0)
-  closeSync(fd)
-  if (head.toString() !== "PGDMP") fail(`${file} doesn't look like a pg_dump file.`)
-}
-if (size === 0) fail(`${file} is empty.`)
-console.log(
-  `Backup written: ${file} (${(size / 1024).toFixed(0)} KB). Keep a copy off this machine.`
-)
+main().catch((err) => fail(err instanceof Error ? err.message : String(err)))

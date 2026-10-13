@@ -16,12 +16,13 @@ import {
 import { updateSettings } from "@/lib/server/settings"
 import { SETTING_DEFAULTS } from "@/lib/server/settings-keys"
 
+import { resetDb } from "../helpers/reset-db"
+
 const TODAY = "2026-10-10"
 const enabled = !!process.env.TEST_DATABASE_URL
 
 async function reset() {
-  await prisma.$executeRaw`TRUNCATE clients, services, payments, reminders, notifications,
-    settings, message_templates, audit_log RESTART IDENTITY CASCADE`
+  await resetDb(prisma, ["clients", "settings", "message_templates", "audit_log"])
   for (const [key, value] of Object.entries(SETTING_DEFAULTS))
     await prisma.setting.create({ data: { key, value } })
   await updateSettings({
@@ -66,6 +67,55 @@ const rowsFor = (serviceId: number) =>
 describe.skipIf(!enabled)("runCheck (docs/10 §1)", () => {
   beforeEach(reset)
   afterAll(() => prisma.$disconnect())
+
+  it("skips while another check holds the lock, and runs once it's free", async () => {
+    await service(12)
+    let release!: () => void
+    const held = new Promise<void>((r) => (release = r))
+    let locked!: () => void
+    const isLocked = new Promise<void>((r) => (locked = r))
+    // Another "check" takes the lock row and keeps its transaction open.
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT name FROM app_locks WHERE name = 'check' FOR UPDATE`
+        locked()
+        await held
+      },
+      { timeout: 10_000 }
+    )
+    await isLocked
+    const blocked = await runCheck({ force: true })
+    expect(blocked.ran).toBe(false)
+    expect(await prisma.reminder.count()).toBe(0)
+    release()
+    await holder
+    const free = await runCheck({ force: true })
+    expect(free.ran).toBe(true)
+    expect(free.queuedNew).toBe(4)
+  })
+
+  it("two parallel checks never create duplicates", async () => {
+    await service(30)
+    await service(12)
+    await service(-4)
+    for (let round = 0; round < 5; round++) {
+      const results = await Promise.all([runCheck({ force: true }), runCheck({ force: true })])
+      if (round === 0) {
+        // Whichever ran first queued everything; the other found the lock
+        // held (ran: false) or, if it came after, nothing left to queue.
+        expect(results.reduce((n, r) => n + r.queuedNew, 0)).toBe(12)
+        expect(results.reduce((n, r) => n + r.invoicesNew, 0)).toBe(3)
+        expect(results.some((r) => r.ran)).toBe(true)
+      } else {
+        expect(results.every((r) => r.queuedNew === 0 && r.invoicesNew === 0)).toBe(true)
+      }
+    }
+    expect(await prisma.reminder.count()).toBe(12)
+    expect(await prisma.notification.count({ where: { type: { not: "invoice_created" } } })).toBe(3)
+    expect(await prisma.invoice.count()).toBe(3)
+    const numbers = await prisma.invoice.findMany({ select: { number: true } })
+    expect(new Set(numbers.map((n) => n.number)).size).toBe(3)
+  })
 
   it("queues the due stages once, catches up, and skips superseded rows", async () => {
     const s45 = await service(45)

@@ -1,0 +1,29 @@
+# Local MariaDB for development and tests (README → Local database).
+# Keep the image version the same as the Hostinger server's (docs/11 §1):
+# phpMyAdmin → "Server version". This is the only place it is set.
+services:
+  db:
+    image: mariadb:11.8
+    container_name: hrm-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      # On purpose not UTC, like a server whose clock is in Pakistan time: the
+      # tests prove that the app still stores and reads UTC (db-config.ts).
+      TZ: Asia/Karachi
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - hrm-mariadb:/var/lib/mysql
+      - ./docker/mariadb-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  hrm-mariadb:

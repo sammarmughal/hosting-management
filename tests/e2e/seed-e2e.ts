@@ -4,12 +4,14 @@
 import { createCipheriv, randomBytes } from "node:crypto"
 
 import { hash } from "@node-rs/argon2"
-import { PrismaPg } from "@prisma/adapter-pg"
+import { PrismaMariaDb } from "@prisma/adapter-mariadb"
 
 import { PrismaClient } from "@/generated/prisma/client"
+import { mariadbConfig } from "@/lib/db-config"
 import { DEFAULT_TEMPLATES } from "@/lib/domain/default-templates"
 import { SETTING_DEFAULTS } from "@/lib/server/settings-keys"
 
+import { resetDb } from "../helpers/reset-db"
 import { E2E } from "./e2e-config"
 
 /** Same format as src/lib/server/crypto.ts (server-only, so not imported here). */
@@ -25,11 +27,12 @@ async function main() {
   const url = process.env.DATABASE_URL
   const appKey = process.env.APP_KEY
   if (!url || !appKey) throw new Error("DATABASE_URL and APP_KEY are required")
-  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) })
+  const prisma = new PrismaClient({ adapter: new PrismaMariaDb(mariadbConfig(url)) })
   try {
-    await prisma.$executeRaw`TRUNCATE admins, sessions, login_attempts, password_resets, clients,
-      services, payments, reminders, notifications, settings, message_templates, audit_log,
-      invoices, invoice_counters, rate_limits RESTART IDENTITY CASCADE`
+    await resetDb(prisma, [
+      "admins", "login_attempts", "clients", "settings", "message_templates", "audit_log",
+      "invoice_counters", "rate_limits",
+    ])
     const settings: Record<string, string | null> = {
       ...SETTING_DEFAULTS,
       business_name: "Rehman Web Services",

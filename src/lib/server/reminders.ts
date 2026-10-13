@@ -7,7 +7,7 @@ import { checkHorizon, checkIsDue, planCheck } from "@/lib/domain/reminder-engin
 import { linkProvider } from "@/lib/domain/whatsapp"
 import { audit } from "@/lib/server/audit"
 import { today as clockToday } from "@/lib/server/clock"
-import { prisma } from "@/lib/server/db"
+import { prisma, type Tx } from "@/lib/server/db"
 import { fromDbDate, toDbDate } from "@/lib/server/db-dates"
 import { MailError, sendMail } from "@/lib/server/mail"
 import { invoiceFilename } from "@/lib/domain/invoices"
@@ -27,7 +27,23 @@ import type { ServiceRow } from "@/types/view"
 // and it is idempotent, so running it twice queues nothing new.
 
 const OPEN = ["pending", "failed", "opened"] as const
-const LOCK_KEY = 4242
+const LOCK_NAME = "check"
+
+/**
+ * Takes the `app_locks` row for the check without waiting. The row lock lasts
+ * until the transaction ends, so a crash or rollback can't leave it held.
+ */
+async function tryCheckLock(tx: Tx): Promise<boolean> {
+  const got = await tx.$queryRaw<{ name: string }[]>`
+    SELECT name FROM app_locks WHERE name = ${LOCK_NAME} FOR UPDATE SKIP LOCKED`
+  if (got.length) return true
+  // Nothing back: either another check holds it, or the row is missing.
+  const [row] = await tx.$queryRaw<{ n: bigint | number }[]>`
+    SELECT COUNT(*) AS n FROM app_locks WHERE name = ${LOCK_NAME}`
+  if (Number(row?.n ?? 0) === 0)
+    throw new Error(`The "${LOCK_NAME}" lock row is missing: run the database migrations.`)
+  return false
+}
 
 export interface CheckResult {
   /** false when it was throttled or another request held the lock. */
@@ -69,9 +85,7 @@ export async function runCheck({
     async (tx) => {
       // Another tab checking right now? The unique keys would block duplicates
       // anyway; the lock just avoids the wasted work.
-      const [lock] = await tx.$queryRaw<{ locked: boolean }[]>`
-        SELECT pg_try_advisory_xact_lock(${LOCK_KEY}) AS locked`
-      if (!lock?.locked) return false
+      if (!(await tryCheckLock(tx))) return false
 
       const services =
         horizon === null
@@ -157,7 +171,9 @@ export async function runCheck({
       await updateSettings({ last_check_at: result.lastCheckAt }, tx)
       return true
     },
-    { timeout: 20_000 }
+    // READ COMMITTED: reads after the lock see what the
+    // previous check committed (MySQL's default is REPEATABLE READ).
+    { timeout: 20_000, isolationLevel: "ReadCommitted" }
   )
   result.ran = ran
 

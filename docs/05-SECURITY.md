@@ -115,7 +115,7 @@ X-Robots-Tag: noindex, nofollow
 ## 8. Platform hardening
 
 - **Hostinger Node.js** (the only host, owner decision, 11 Oct 2026): keep `.env` outside any public folder, and run `node .next/standalone/server.js` behind Hostinger's proxy with HTTPS enabled. Don't expose any env var with the `NEXT_PUBLIC_` prefix except harmless ones (none are needed).
-- **No public test copies:** test changes locally, or on a separate Hostinger staging subdomain against a Neon branch database. Never test on production data.
+- **No public test copies:** test changes locally, or on a separate Hostinger staging subdomain with its own separate MySQL database (created in hPanel → Databases). Never test on production data.
 - **Daily check:** the hPanel cron job calls `/api/cron/check` with `Authorization: Bearer <CRON_SECRET>`. Keep `CRON_SECRET` long and random, and only in the env and the cron command (docs/11 §4).
 - `NODE_ENV=production` → the Next.js error overlay is off, and errors are logged server-side. Users see `error.tsx` with no stack trace.
 - `FAKE_TODAY` is ignored when `NODE_ENV === 'production'`.
@@ -126,13 +126,13 @@ X-Robots-Tag: noindex, nofollow
 1. `/forgot` → email → always shows "If that email exists, a link was sent."
 2. Token = 32 random bytes (base64url). Only `sha256(token)` is stored. It is valid for 30 minutes and works once.
 3. `/reset/[token]` → new password → **all sessions deleted** → a normal login is still needed, **including 2FA**.
-4. Emergency: `npm run reset-2fa` (CLI, needs DB access) disables 2FA so it is set up again at the next login.
+4. Emergency: `npm run reset-2fa` (CLI, needs DB access: run it over SSH on the Hostinger server, since the database only listens on `localhost`) disables 2FA so it is set up again at the next login.
 
 ## 10. Secrets
 
 | Secret | Where |
 |--------|-------|
-| `DATABASE_URL`, `DIRECT_URL`, `APP_KEY` | Env vars (Hostinger env). Never in git. `.env.example` has placeholders |
+| `DATABASE_URL`, `APP_KEY` | Env vars (Hostinger env). Never in git. `.env.example` has placeholders |
 | SMTP password | `settings.smtp_password_enc` (AES-256-GCM with APP_KEY). The UI never shows it back (empty field = unchanged) |
 | TOTP secret | `admins.totp_secret_enc` (encrypted) |
 

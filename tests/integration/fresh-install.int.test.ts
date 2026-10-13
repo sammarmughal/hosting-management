@@ -7,12 +7,13 @@ import { prisma } from "@/lib/server/db"
 import { runCheck } from "@/lib/server/reminders"
 import { getAppSettings, getPreferences, getTemplate } from "@/lib/server/settings"
 
+import { resetDb } from "../helpers/reset-db"
+
 const enabled = !!process.env.TEST_DATABASE_URL
 
 describe.skipIf(!enabled)("fresh production install (no seed data)", () => {
   beforeEach(async () => {
-    await prisma.$executeRaw`TRUNCATE clients, services, payments, reminders, notifications,
-      settings, message_templates, audit_log, invoices, invoice_counters RESTART IDENTITY CASCADE`
+    await resetDb(prisma, ["clients", "settings", "message_templates", "audit_log", "invoice_counters"])
     process.env.FAKE_TODAY = "2026-10-11"
   })
   afterAll(() => prisma.$disconnect())

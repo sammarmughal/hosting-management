@@ -5,7 +5,7 @@ A secure, single-admin web app for tracking which clients' hosting (on our Hosti
 **Approach: "check on login" plus one daily scheduled check.**
 The app runs no background workers. It checks for due reminders and invoices when the admin opens the dashboard, on **Check now**, and once a day at 09:00 PKT from an hPanel cron job. Emails go out with one click (auto-send can be turned on). WhatsApp uses free click-to-chat links (`wa.me`) with a pre-filled message, so there is no Meta API, no extra number and no per-message cost.
 
-**Stack: Next.js 16 + TypeScript + Tailwind/shadcn + Prisma 7 + PostgreSQL (Neon).** Runs on **Hostinger Node.js hosting** (`output: "standalone"`) at https://renewals.abdulrehmaan.net, with the database on **Neon**.
+**Stack: Next.js 16 + TypeScript + Tailwind/shadcn + Prisma 7 + MySQL/MariaDB.** Runs on **Hostinger Node.js hosting** (`output: "standalone"`) at https://renewals.abdulrehmaan.net, with the database in **Hostinger's MySQL/MariaDB** on the same server (host `localhost`).
 
 ---
 
@@ -23,7 +23,7 @@ The app runs no background workers. It checks for due reminders and invoices whe
 | 8 | [docs/08-MESSAGES.md](docs/08-MESSAGES.md) | Email and WhatsApp templates, placeholders, phone formatting |
 | 9 | [docs/09-TASKS.md](docs/09-TASKS.md) | Phase-by-phase build checklist |
 | 10 | [docs/10-TESTING.md](docs/10-TESTING.md) | Vitest, Playwright, manual QA checklist |
-| 11 | [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) | Neon + Hostinger Node.js, daily cron, go-live, backups |
+| 11 | [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) | Hostinger Node.js + MySQL/MariaDB, daily cron, go-live, backups |
 | 12 | [docs/12-DESIGN-DIRECTION.md](docs/12-DESIGN-DIRECTION.md) | Visual quality bar (wins on visuals) |
 | 13 | [docs/13-INVOICES-AND-SHARING.md](docs/13-INVOICES-AND-SHARING.md) | Invoices, PDF, public links, sharing, currency (wins on these) |
 | — | [docs/USER-GUIDE.md](docs/USER-GUIDE.md) | Owner's guide in simple English: daily routine, clients, invoices, colours, failed emails |
@@ -32,11 +32,12 @@ The app runs no background workers. It checks for due reminders and invoices whe
 
 ## Setup (local)
 
-Needs **Node.js 20.9+** (22 recommended) and **PostgreSQL 15+** (local, or a Neon dev branch).
+Needs **Node.js 20.9+** (22 recommended) and **MariaDB 10.6+ / MySQL 8.0+** (locally the Docker database below).
 
 ```sh
 npm ci                          # also runs `prisma generate` (postinstall)
 cp .env.example .env            # fill in the variables below
+npm run db:up                   # local MariaDB in Docker, or `npm run db:local:start` without Docker (see "Local database")
 npm run db:migrate              # applies prisma/migrations
 SEED_DEMO=1 npm run db:seed     # settings + templates, plus demo clients and a demo admin
 npm run dev                     # http://localhost:3000
@@ -49,31 +50,40 @@ For **production**, don't seed anything: `npm run setup:prod -- --env-file .env.
 ```sh
 npm run create-admin            # prompts for username, email, password (-- --force replaces the admin)
 npm run reset-2fa               # emergency: turn 2FA off if the phone is lost
-npm run backup                  # pg_dump of DIRECT_URL to backups/hrm-YYYY-MM-DD-HHMM.dump (docs/11 §6)
+npm run backup                  # mariadb-dump of DATABASE_URL to backups/hrm-YYYY-MM-DD-HHMM.sql.gz (docs/11 §6)
 ```
+
+The database is on the Hostinger server with host `localhost`, so `npm run setup:prod`, `npm run backup` and `npx prisma migrate deploy` against production must run **over SSH on that server** (or, temporarily, from your machine with hPanel → Databases → Remote MySQL enabled for your IP and the server's MySQL hostname in the URL).
+
+`npm run backup` needs `mariadb-dump` (or `mysqldump`, used if `mariadb-dump` isn't found; `MYSQL_DUMP` sets the path) on the PATH. It dumps with `--single-transaction --no-tablespaces` and passes the password via `MYSQL_PWD`; add `-- --sql` for a plain `.sql` file. Restore: `gunzip -c file.sql.gz | mariadb -u USER -p DBNAME`. Hostinger also keeps automatic backups (hPanel → Files → Backups → Database backups).
 
 After pulling changes to `prisma/schema.prisma`, run `npm run db:migrate` (it applies the migration; with Prisma 7 also run `npx prisma generate` if the client wasn't regenerated).
 
-### Local database without admin rights (Windows)
+### Local database
 
-The official PostgreSQL zip runs from a user folder, with no Windows service:
+Local development and the tests use **MariaDB 11.8**, the same version as the Hostinger server (phpMyAdmin → "Server version"; if Hostinger's differs, change it in both places below). There are two ways to run it, both on port 3306 with the same databases, so use one or the other:
 
-```powershell
-# once: download postgresql-17.x-windows-x64-binaries.zip from enterprisedb.com and unzip to %LOCALAPPDATA%\pgsql17
-$pg = "$env:LOCALAPPDATA\pgsql17\pgsql\bin"
-& "$pg\initdb.exe" -D "$env:LOCALAPPDATA\pgsql17\data" -U postgres -W -E UTF8 --locale=C   # once
-& "$pg\pg_ctl.exe" -D "$env:LOCALAPPDATA\pgsql17\data" -l "$env:LOCALAPPDATA\pgsql17\server.log" start
-& "$pg\psql.exe" -U postgres -c "CREATE DATABASE hrm" -c "CREATE DATABASE hrm_test"        # once
-```
+**A. Docker** (`docker-compose.yml`, `mariadb:11.8`)
+1. Install **Docker Desktop** and start it (on Windows it needs WSL 2 and admin rights).
+2. `npm run db:up` starts the container and waits until it's healthy. `npm run db:down` stops it; the data stays in a Docker volume.
 
-It does not start with Windows: run the `pg_ctl ... start` line again after a reboot (`pg_ctl ... stop` to stop it).
+**B. Portable MariaDB, no Docker or admin rights** (`scripts/local-db.mjs`)
+1. Download the **MariaDB 11.8 Windows ZIP** (`mariadb-11.8.x-winx64.zip`) from mariadb.org and unzip it so that `%LOCALAPPDATA%\mariadb-11.8\bin\mariadbd.exe` exists (or set `MARIADB_HOME` to the unzipped folder).
+2. `npm run db:local:start` starts it in the background. `npm run db:local:stop` stops it, and `npm run db:local:status` says whether it's running. It does not start with Windows, so run `db:local:start` after a reboot.
+3. The data lives in `.local-db/` in this folder (git-ignored), and the log is in `.local-db/server.log`. To start from scratch, stop the server and delete `.local-db/`.
+
+Either way, the first start runs `docker/mariadb-init.sql`, which creates the databases `hrm`, `hrm_test` and `hrm_e2e` and the user `hrm` / `hrm`. Then:
+
+1. Copy the three URLs from `.env.example` into `.env` (`DATABASE_URL`, `TEST_DATABASE_URL`, `E2E_DATABASE_URL`, all `mysql://hrm:hrm@localhost:3306/…`).
+2. `npx prisma migrate dev`, then `npm run db:seed` (with `SEED_DEMO=1` for demo data).
+
+Both servers run their clock in Pakistan time (UTC+5) on purpose: the tests prove the app still stores and reads UTC.
 
 ## Environment variables
 
 | Variable | Required | Used for |
 |----------|----------|----------|
-| `DATABASE_URL` | yes | The app's database connection. On Neon, the **pooled** URL (`…-pooler…`, `?sslmode=require`). |
-| `DIRECT_URL` | yes | Migrations (`prisma migrate deploy`). On Neon, the **direct** URL. |
+| `DATABASE_URL` | yes | The database, for the app and the migrations: `mysql://user:password@host:3306/db`. In production `mysql://u123456789_hrm:PASSWORD@localhost:3306/u123456789_hrm` (user and database as created in hPanel → Databases; URL-encode special characters in the password). The pool is capped at 5 connections in code. |
 | `APP_URL` | yes | Public base URL, in production `https://renewals.abdulrehmaan.net`. Used in invoice links (`/i/<token>`) and password-reset emails. In production the server **refuses to start** if it's missing, uses http, or points to localhost. Choose the final domain before sending invoices: old links keep the old domain. |
 | `APP_KEY` | yes | `base64:` + 32 random bytes (`openssl rand -base64 32`). Encrypts the TOTP secret and the SMTP password (AES-256-GCM). |
 | `SESSION_COOKIE_NAME` | no | Defaults to `hrm_session`. |
@@ -117,7 +127,7 @@ Invoices keep a copy of these details from the moment they're created, so later 
 
 **Settings → Templates → Invoice email / Invoice WhatsApp** hold the Share invoice messages, with `{{invoice_number}}`, `{{invoice_link}}`, `{{invoice_total}}` and `{{due_date}}`. The email always attaches the PDF; reminder emails attach the cycle's invoice too, and reminder WhatsApp messages include its link.
 
-Each invoice has a secret public link (`/i/<token>`, 32 random bytes): no login, not indexed, rate limited. **Regenerate link** on the invoice page stops the old link at once.
+Each invoice has a secret public link (`/i/<token>`, 32 random bytes as 64 lowercase hex characters): no login, not indexed, rate limited. **Regenerate link** on the invoice page stops the old link at once.
 
 ## Reminders and the daily check
 
@@ -144,7 +154,7 @@ npm run build    # next build + postbuild (copies public/ and .next/static into 
 npm start        # node .next/standalone/server.js, with ./.env loaded if present; PORT sets the port
 ```
 
-See [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) for Neon, Hostinger and the daily cron job.
+See [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) for the Hostinger database, the Node.js app and the daily cron job.
 
 ## Key decisions at a glance
 
@@ -152,7 +162,7 @@ See [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) for Neon, Hostinger and the d
 |-------|----------|
 | Framework | Next.js (App Router), TypeScript strict, Node runtime (not Edge) |
 | UI | Tailwind CSS + shadcn/ui + lucide-react. No external CDNs |
-| Database | PostgreSQL on Neon via Prisma 7 (`@prisma/adapter-pg`), TLS, point-in-time restore |
+| Database | Hostinger MySQL/MariaDB on the same server (`localhost`) via Prisma 7 (`@prisma/adapter-mariadb`), pool of 5, utf8mb4, timestamps in UTC. Hostinger's automatic backups plus `npm run backup` |
 | Hosting | Hostinger Node.js app (Business/Cloud plan), `https://renewals.abdulrehmaan.net`. No other host |
 | Users | Exactly one admin. No sign-up. Created with `npm run create-admin` |
 | Auth | Argon2id password + mandatory TOTP 2FA + DB-backed sessions + login throttling |
@@ -171,6 +181,6 @@ See [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) for Neon, Hostinger and the d
 | Item | Cost |
 |------|------|
 | Hostinger Business/Cloud | the existing plan (Node.js apps need Business or Cloud) |
-| Neon Postgres | free tier is enough to start |
+| MySQL/MariaDB database | included in the Hostinger plan |
 | Email | the existing Hostinger mailbox |
 | WhatsApp | free (click-to-chat) |

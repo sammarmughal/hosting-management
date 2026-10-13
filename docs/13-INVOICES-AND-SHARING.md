@@ -36,7 +36,7 @@ A `wa.me` link can only open WhatsApp with **pre-filled text**. It cannot attach
 - `billTo` (JSON snapshot of client name, company, email, phone, address at issue time)
 - `seller` (JSON snapshot of business details at issue time), so editing settings later never changes old invoices
 - `notes`
-- `publicToken` (32 random bytes, URL-safe), `publicTokenRevokedAt`
+- `publicToken` (32 random bytes as 64 lowercase hex characters, so the case-insensitive collation can't make two tokens equal; the lookup also compares exactly), `publicTokenRevokedAt`
 - `firstSentAt`, `paidAt`, `paymentId`, `voidedAt`, `createdAt`, `updatedAt`
 - Unique constraint on `(serviceId, periodStart)` so each renewal cycle has exactly one invoice.
 
@@ -47,7 +47,7 @@ A `wa.me` link can only open WhatsApp with **pre-filled text**. It cannot attach
 ## 3. Numbering
 
 - Format `{prefix}-{YYYY}-{seq}`, seq zero-padded to 4 digits. Prefix from settings, default `INV`.
-- Sequence is per year, allocated inside a DB transaction (counter row with a lock, or equivalent). Numbers are never reused; a voided invoice keeps its number.
+- Sequence is per year, allocated inside a DB transaction (`invoice_counters` row: `INSERT … ON DUPLICATE KEY UPDATE next = next + 1`, then `SELECT next - 1`; the row lock serialises parallel requests and a rollback gives the number back, docs/03 §2). Numbers are never reused; a voided invoice keeps its number.
 
 ## 4. When invoices are created
 

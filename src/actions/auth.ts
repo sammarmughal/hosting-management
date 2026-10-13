@@ -61,7 +61,7 @@ export async function loginAction(identifier: string, password: string): Promise
   }
 
   const admin = await prisma.admin.findFirst({
-    where: { OR: [{ username: { equals: id, mode: "insensitive" } }, { email: id }] },
+    where: { OR: [{ username: { equals: id } }, { email: id }] },
   })
   const ok = admin
     ? await verifyPassword(admin.passwordHash, parsed.data.password)

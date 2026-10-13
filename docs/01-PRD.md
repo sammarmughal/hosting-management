@@ -18,7 +18,7 @@ One private web app where the admin can:
 - **No background workers.** Reminder checks run when the admin opens the app (see `04-BUSINESS-LOGIC.md` §4), from Check now, and once a day from a Hostinger hPanel cron job that calls `/api/cron/check` (owner decision, 11 Oct 2026; docs/11 §4).
 - **WhatsApp without the paid API.** Use `wa.me` click-to-chat links with pre-filled text. The admin taps Send in WhatsApp.
 - **Single admin account**, fully authenticated, with nobody else able to access the app.
-- Built with **Next.js**. Deployed on **Hostinger's Node.js hosting** only (owner decision, 11 Oct 2026), at `https://renewals.abdulrehmaan.net`. The database is PostgreSQL on **Neon**.
+- Built with **Next.js**. Deployed on **Hostinger's Node.js hosting** only (owner decision, 11 Oct 2026), at `https://renewals.abdulrehmaan.net`. The database is **MySQL/MariaDB on the same Hostinger server** (owner decision, 13 Oct 2026).
 - Keep it simple: one Next.js app, one database, and no extra services except the database and SMTP.
 
 ## 4. Users
@@ -130,7 +130,7 @@ One private web app where the admin can:
 | NFR-3 | Works on phones (≥ 360 px), tablets and desktops. The admin often uses it from a phone for WhatsApp |
 | NFR-4 | No external CDNs at runtime. All CSS, JS, fonts and icons are served locally (for security/CSP) |
 | NFR-5 | All dates are stored as `DATE`. Logic uses `Asia/Karachi`, and timestamps are stored in UTC `DATETIME` |
-| NFR-6 | Node.js 20 LTS+, Next.js (App Router, latest stable), PostgreSQL 15+ (Neon) via Prisma |
+| NFR-6 | Node.js 20 LTS+, Next.js (App Router, latest stable), MySQL 8.0+ / MariaDB 10.6+ (Hostinger) via Prisma |
 | NFR-7 | Only the libraries listed in `02-ARCHITECTURE.md` §1. Anything else needs approval |
 | NFR-8 | Search engines must not index the app (`noindex` and `robots.txt` disallow) |
 

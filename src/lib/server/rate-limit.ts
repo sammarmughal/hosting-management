@@ -4,17 +4,22 @@ import { prisma } from "@/lib/server/db"
 
 /**
  * Fixed-window rate limit, DB-backed (serverless instances share no memory,
- * docs/05 §4). One atomic upsert per hit. Returns false once `limit` hits
+ * docs/05 §4). One atomic upsert per hit, then a read of the new count in the
+ * same transaction (MySQL has no RETURNING). Returns false once `limit` hits
  * happened in the current window.
  */
 export async function allowHit(key: string, limit: number, windowSeconds: number) {
   const ms = windowSeconds * 1000
   const windowStart = new Date(Math.floor(Date.now() / ms) * ms)
-  const [row] = await prisma.$queryRaw<{ count: number }[]>`
-    INSERT INTO rate_limits (key, window_start, count)
-    VALUES (${key.slice(0, 120)}, ${windowStart}, 1)
-    ON CONFLICT (key, window_start) DO UPDATE SET count = rate_limits.count + 1
-    RETURNING count`
+  const k = key.slice(0, 120)
+  const [row] = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      INSERT INTO rate_limits (\`key\`, window_start, \`count\`)
+      VALUES (${k}, ${windowStart}, 1)
+      ON DUPLICATE KEY UPDATE \`count\` = \`count\` + 1`
+    return tx.$queryRaw<{ count: number }[]>`
+      SELECT \`count\` FROM rate_limits WHERE \`key\` = ${k} AND window_start = ${windowStart}`
+  })
   // Housekeeping now and then: drop windows older than a day.
   if (Math.random() < 0.02)
     await prisma.rateLimit.deleteMany({

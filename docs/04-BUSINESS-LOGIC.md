@@ -121,10 +121,14 @@ For **negative stages** (after expiry), the client rows are only queued if `post
 
 ```
 1. If !force and now − last_check_at < check_interval_minutes → return (skipped).
-2. Inside the transaction, take a Postgres advisory lock: `SELECT pg_try_advisory_xact_lock(4242)`. If it returns false → return (another tab is checking). The unique keys also block duplicates, so the lock is only an optimisation.
+2. BEGIN TRANSACTION (READ COMMITTED). First statement, the lock:
+     SELECT name FROM app_locks WHERE name = 'check' FOR UPDATE SKIP LOCKED
+   No row back → another check (tab, cron) holds it → roll back and return ran:false.
+   The unique keys also block duplicates, so the lock is only an optimisation.
+   (Needs MariaDB 10.6+ / MySQL 8.0+ for SKIP LOCKED.)
 3. today = PK date.  stages = parsed setting.  maxStage = stages[0] (e.g. 30).
 4. services = active, reminders_enabled = 1, days_left <= maxStage.
-5. BEGIN TRANSACTION
+5. Still in the same transaction:
    For each service:
      d     = days_left
      stage = dueStage(d, stages);  if null → continue
@@ -140,7 +144,7 @@ For **negative stages** (after expiry), the client rows are only queued if `post
         title: d>0 "{domain} expires in {d} days" | d=0 "{domain} expires today" | d<0 "{domain} expired {|d|} days ago"
    UPDATE settings SET value = NOW_UTC WHERE key='last_check_at'
    COMMIT
-6. RELEASE_LOCK('hrm_check')
+6. The row lock on app_locks 'check' is released by the COMMIT (or rollback); nothing to release by hand.
 7. If auto_send_emails = 1 → MailService sends up to auto_send_batch_size pending client-email rows,
    then sends the admin summary email if any admin-email rows are pending.
 8. Return counts {services_checked, queued_new, skipped, notifications_new, emails_sent, emails_failed}.
@@ -181,7 +185,7 @@ Server Action `skipReminderAction(id)` → `status='skipped'`, for example when 
 
 ## 6. Renewal
 
-`renewService({ serviceId, amount, paidOn, method, reference, notes, extendFrom: 'renewal' | 'today' })` in `src/lib/server/renewals.ts` (Prisma `$transaction`)
+`renewService({ serviceId, amount, paidOn, method, reference, notes, extendFrom: 'renewal' | 'today' })` in `src/lib/server/renewals.ts` (Prisma `$transaction`, READ COMMITTED so the reads after `FOR UPDATE` see the latest committed row; MySQL's default is REPEATABLE READ)
 
 ```
 BEGIN

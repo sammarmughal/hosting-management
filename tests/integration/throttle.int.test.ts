@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { prisma } from "@/lib/server/db"
 import { isLocked, recordAttempt } from "@/lib/server/throttle"
 
+import { resetDb } from "../helpers/reset-db"
+
 const enabled = !!process.env.TEST_DATABASE_URL
 const MIN = 60_000
 
@@ -16,7 +18,7 @@ async function fail(ip: string, identifier: string, at: Date) {
 
 describe.skipIf(!enabled)("login throttling (docs/05 §4)", () => {
   beforeEach(async () => {
-    await prisma.$executeRaw`TRUNCATE login_attempts RESTART IDENTITY`
+    await resetDb(prisma, ["login_attempts"])
   })
 
   it("blocks the 6th attempt after 5 failures in 15 minutes, and lifts after 15 minutes", async () => {
@@ -32,7 +34,7 @@ describe.skipIf(!enabled)("login throttling (docs/05 §4)", () => {
     expect(await isLocked("198.51.100.99", "rehman", now)).toBe(true)
     expect(await isLocked("198.51.100.99", "someone-else", now)).toBe(false)
 
-    await prisma.$executeRaw`TRUNCATE login_attempts RESTART IDENTITY`
+    await resetDb(prisma, ["login_attempts"])
     for (let i = 0; i < 5; i++) await fail("192.0.2.7", `guess${i}`, now)
     expect(await isLocked("192.0.2.7", "rehman", now)).toBe(true)
   })

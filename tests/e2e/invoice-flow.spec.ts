@@ -79,7 +79,7 @@ test("invoice lifecycle: check → invoice → email with PDF → public link �
   await context.grantPermissions(["clipboard-read", "clipboard-write"])
   await page.getByRole("button", { name: "Copy link" }).click()
   const link = await page.evaluate(() => navigator.clipboard.readText())
-  expect(link).toMatch(/\/i\/[A-Za-z0-9_-]{43}$/)
+  expect(link).toMatch(/\/i\/[0-9a-f]{64}$/)
   expect(mail.data.replace(/=\r?\n/g, "")).toContain(link.split("/i/")[1])
 
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })

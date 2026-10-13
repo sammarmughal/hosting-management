@@ -76,7 +76,7 @@ export default async function globalSetup() {
   const url = E2E.databaseUrl()
   if (!url || !process.env.APP_KEY)
     throw new Error("E2E needs E2E_DATABASE_URL (or TEST_DATABASE_URL) and APP_KEY")
-  const env = { ...process.env, DATABASE_URL: url, DIRECT_URL: url }
+  const env = { ...process.env, DATABASE_URL: url }
   execSync("npx prisma migrate deploy", { stdio: "ignore", env })
   execSync("npx tsx tests/e2e/seed-e2e.ts", { stdio: "inherit", env })
   const smtp = await startSmtpCatcher(E2E.smtpPort, E2E.mailbox)

@@ -14,6 +14,6 @@ export default function setup() {
   }
   execSync("npx prisma migrate deploy", {
     stdio: "ignore",
-    env: { ...process.env, DATABASE_URL: url, DIRECT_URL: url },
+    env: { ...process.env, DATABASE_URL: url },
   })
 }

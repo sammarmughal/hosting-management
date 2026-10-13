@@ -1,5 +1,7 @@
 import "server-only"
 
+import { randomBytes } from "node:crypto"
+
 import type { InvoiceEventType, Prisma } from "@/generated/prisma/client"
 import { type ISODate } from "@/lib/domain/dates"
 import {
@@ -17,7 +19,6 @@ import { currencyDecimals } from "@/lib/domain/currency"
 import { formatMoney, MONEY_SCALE } from "@/lib/domain/money"
 import { audit } from "@/lib/server/audit"
 import { today as clockToday } from "@/lib/server/clock"
-import { randomToken } from "@/lib/server/crypto"
 import { prisma, type Tx } from "@/lib/server/db"
 import { fromDbDate, toDbDate } from "@/lib/server/db-dates"
 import { getAppSettings, type AppSettings } from "@/lib/server/settings"
@@ -30,23 +31,31 @@ type Db = Tx | typeof prisma
 /* Numbering (docs/13 §3) --------------------------------------------- */
 
 /**
- * Takes the next number for the issue date's year. One atomic upsert on the
- * year's counter row: concurrent transactions queue on the row lock, so two
- * invoices can never get the same number. If the surrounding transaction
- * rolls back, so does the counter; a committed number is never reused
- * (voided invoices keep theirs).
+ * Takes the next number for the issue date's year. The upsert takes the
+ * year's counter row lock straight away (exclusive), so concurrent
+ * transactions queue on it and two invoices can never get the same number;
+ * the read after it sees this transaction's own write. If the surrounding
+ * transaction rolls back, so does the counter; a committed number is never
+ * reused (voided invoices keep theirs).
  */
 export async function allocateInvoiceNumber(tx: Tx, issueDate: ISODate, prefix: string) {
   const year = numberYear(issueDate)
-  const [row] = await tx.$queryRaw<{ seq: number }[]>`
-    INSERT INTO invoice_counters (year, next, updated_at)
-    VALUES (${year}, 2, now())
-    ON CONFLICT (year) DO UPDATE
-      SET next = invoice_counters.next + 1, updated_at = now()
-    RETURNING next - 1 AS seq`
+  await tx.$executeRaw`
+    INSERT INTO invoice_counters (year, \`next\`, updated_at)
+    VALUES (${year}, 2, UTC_TIMESTAMP(3))
+    ON DUPLICATE KEY UPDATE \`next\` = \`next\` + 1, updated_at = UTC_TIMESTAMP(3)`
+  const [row] = await tx.$queryRaw<{ seq: bigint | number }[]>`
+    SELECT \`next\` - 1 AS seq FROM invoice_counters WHERE year = ${year}`
   if (!row) throw new Error("Could not allocate an invoice number")
   return formatInvoiceNumber(prefix, year, Number(row.seq))
 }
+
+/** 64 lowercase hex characters: safe under the case-insensitive collation. */
+const publicToken = () => randomBytes(32).toString("hex")
+
+/** A unique-key clash (P2002), e.g. a parallel request created the same cycle's invoice. */
+const isUniqueViolation = (e: unknown) =>
+  typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002"
 
 /* Snapshots ------------------------------------------------------------ */
 
@@ -165,7 +174,7 @@ export async function createCycleInvoice(
       ...amounts,
       billTo: billToSnapshot(service.client) as unknown as Prisma.InputJsonValue,
       seller: sellerSnapshot(settings) as unknown as Prisma.InputJsonValue,
-      publicToken: randomToken(32),
+      publicToken: publicToken(),
       items: { create: items },
     },
   })
@@ -218,7 +227,23 @@ export async function createInvoiceNow(serviceId: number): Promise<CreateResult 
   })
   if (!service) return { error: "Service not found." }
   if (service.status !== "active") return { error: "Cancelled services don’t get invoices." }
-  const res = await prisma.$transaction((tx) => createCycleInvoice(tx, service, settings, "manual"))
+  let res: CreateResult | null
+  try {
+    res = await prisma.$transaction(
+      (tx) => createCycleInvoice(tx, service, settings, "manual"),
+      { isolationLevel: "ReadCommitted" }
+    )
+  } catch (e) {
+    // A parallel request (another tab, or the daily check) created this
+    // cycle's invoice first. Our transaction rolled back, number included.
+    if (!isUniqueViolation(e)) throw e
+    const existing = await prisma.invoice.findUnique({
+      where: { uq_invoice_cycle: { serviceId: service.id, periodStart: service.renewalDate } },
+      select: { id: true, number: true },
+    })
+    if (!existing) throw e
+    res = { ...existing, created: false }
+  }
   if (!res) return { error: "Cancelled services don’t get invoices." }
   if (res.created) await audit("invoice.create", { entity: "invoice", entityId: res.id })
   return res
@@ -317,7 +342,7 @@ export async function voidInvoice(invoiceId: number, reason: string | null) {
 export async function regeneratePublicLink(invoiceId: number) {
   const inv = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { id: true } })
   if (!inv) return null
-  const token = randomToken(32)
+  const token = publicToken()
   await prisma.invoice.update({
     where: { id: invoiceId },
     data: { publicToken: token, publicTokenRevokedAt: new Date() },
@@ -343,5 +368,5 @@ export function publicInvoiceUrl(token: string) {
   return `${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/i/${token}`
 }
 
-/** Token format: 32 random bytes, base64url (43 chars). Cheap check before any DB query. */
-export const isTokenShaped = (token: string) => /^[A-Za-z0-9_-]{43}$/.test(token)
+/** Token format: 32 random bytes, lowercase hex (64 chars). Cheap check before any DB query. */
+export const isTokenShaped = (token: string) => /^[0-9a-f]{64}$/.test(token)

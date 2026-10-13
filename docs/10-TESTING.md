@@ -35,7 +35,15 @@ Every row in `08-MESSAGES.md` §4, plus: `"0300-123 4567"` → `923001234567` ·
 - Unknown `{foo}` is left unchanged.
 - A template without section markers is used as-is for all cases.
 
-### reminders.int.test.ts (integration, against a separate Neon test branch or a local Postgres in Docker)
+### Integration test database
+Integration tests run against `TEST_DATABASE_URL`, locally the `hrm_test` database in the local MariaDB 11.8 (Docker with `npm run db:up`, or the portable server with `npm run db:local:start`; README → Local database). Between tests, `tests/helpers/reset-db.ts` empties the tables (`SET FOREIGN_KEY_CHECKS = 0`, then `TRUNCATE` of each table including the dependent ones). Both local servers keep their clock at UTC+5 on purpose, so the UTC test below means something.
+
+### MySQL-specific tests (concurrency and UTC)
+- `reminders.int.test.ts`: while another transaction holds the `app_locks` 'check' row, `runCheck()` skips (`ran: false`) and runs once it's free; two parallel `runCheck()` calls never create duplicate reminders, notifications or invoices.
+- `invoices.int.test.ts`: two parallel "Create invoice now" calls make one invoice and use one number (no gap: the loser's number rolls back); numbering stays per year and gap-free under concurrency; timestamps round-trip as UTC even though the DB clock is in Asia/Karachi.
+- `ops-scripts.test.ts` (unit): the pool is capped at 5 connections and pins the session to UTC; the backup's dump command keeps the password off the command line (`MYSQL_PWD`); non-`mysql://` URLs are rejected.
+
+### reminders.int.test.ts (integration, against the local MariaDB)
 Seed 5 services at d = 45, 30, 12, 0 and −4:
 1. runCheck(today, force) → 4 services queued (45 is skipped). Stages 30, 15, 0 and −3. Notifications = 4.
 2. runCheck again (force) → 0 new rows, 0 new notifications.
@@ -106,9 +114,9 @@ The 6th failure in 15 min is blocked, and the block lifts after 15 min (fake clo
 - [ ] A blank `client_currency` gives the app default currency, and a blank service `currency` gives the client's currency.
 
 ### Hosting
-- [ ] Works on the production URL `https://renewals.abdulrehmaan.net` (Hostinger Node.js + Neon).
+- [ ] Works on the production URL `https://renewals.abdulrehmaan.net` (Hostinger Node.js + Hostinger MySQL/MariaDB).
 - [ ] The hPanel cron job runs the daily check at 09:00 PKT, and a call without the right `CRON_SECRET` is rejected (docs/11 §4).
-- [ ] Test changes locally, or on a separate Hostinger staging subdomain against a Neon branch database, never on production data.
+- [ ] Test changes locally, or on a separate Hostinger staging subdomain with its own separate MySQL database (created in hPanel → Databases), never on production data.
 - [ ] If the server timezone is UTC, dates and colours are still correct (PK midnight).
 
 ### Responsive / browsers

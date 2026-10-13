@@ -1,25 +1,38 @@
-# 11 — Deployment (Hostinger Node.js + Neon Postgres)
+# 11 — Deployment (Hostinger Node.js + Hostinger MySQL/MariaDB)
 
-Owner decision (11 Oct 2026): the app runs on **Hostinger** as a Node.js app, and the database is **PostgreSQL on Neon**. There is no other host. Production URL: **https://renewals.abdulrehmaan.net**.
+Owner decision (13 Oct 2026, replaces the Neon plan of 11 Oct): **everything runs on Hostinger**. The app is a Hostinger Node.js app, and the database is the **MySQL/MariaDB database that comes with the same Hostinger plan, on the same server**. There is no other host. Production URL: **https://renewals.abdulrehmaan.net**.
 
 > Hosting dashboards change. The steps describe *what* to set up. Look for the matching option if a name differs.
 
-## 1. Database (Neon), once
-1. Create a Neon project → database `hrm`. Pick the region closest to the Hostinger server (check hPanel → the website's server location; for a server in Asia or Europe choose **Singapore** or **Frankfurt**).
-2. Copy two connection strings from Neon → **Connect**:
-   - **Pooled** (host contains `-pooler`) → `DATABASE_URL` (used by the app)
-   - **Direct** → `DIRECT_URL` (used by migrations)
-   Both end with `?sslmode=require`; keep it.
-3. Set up the database with the production setup script (step 4 of §2 below), not with `db:seed`: it applies the migrations and creates the admin, and loads **no demo or seed data**.
-4. Neon keeps point-in-time restore history (how far back depends on the plan). Also take your own backups (see §6).
+## 1. Database (hPanel), once
+1. hPanel → **Databases → MySQL Databases** (called "Management" on some plans). Create:
+   - a database, e.g. `hrm`. Hostinger adds your account prefix, so it becomes something like `u123456789_hrm`.
+   - a user for it, e.g. `hrm`, which becomes `u123456789_hrm`, with a long random password. hPanel gives this user all rights on that one database, which is what the app and the migrations need.
+2. **Check the host.** The list of databases in hPanel shows a **MySQL host** for each one. In phpMyAdmin (hPanel → Databases → phpMyAdmin → **Enter phpMyAdmin**), the **Database server** box on the home page shows it as **Server: Localhost via UNIX socket**, or similar.
+   - If it says `localhost` (normal when the Node.js app and the database are on the same plan), use `localhost`.
+   - If it shows a hostname or IP instead (e.g. `srv1234.hstgr.io`), the database is on another server. Use that host in the URL below. It may also need **Remote MySQL** (step 4).
+3. **Note the version.** The same phpMyAdmin box shows **Server version** (e.g. `11.8.x-MariaDB` or `8.0.x - MySQL`). Set the same version in `docker-compose.yml` (`image: mariadb:11.8`, or `mysql:8.0` for MySQL) so local development and tests use the same server. The app needs **MariaDB 10.6+ or MySQL 8.0+**: `SKIP LOCKED` is used for the daily-check lock.
+4. **Remote MySQL** (hPanel → Databases → Remote MySQL) stays **off** in normal use. The app connects locally. Turn it on for your own IP only if you must run a script from your PC (see §2), and turn it off again afterwards.
+5. **Character set:** the migrations create every table as `utf8mb4` / `utf8mb4_unicode_ci`, whatever the database's default. In phpMyAdmin → the database → **Operations → Collation**, `utf8mb4_unicode_ci` is the right setting, but the app doesn't depend on it.
+6. Set up the database with the production setup script (§2 below), not with `db:seed`. It applies the migrations and creates the admin, and loads **no demo or seed data**.
+
+### The connection string
+```
+DATABASE_URL="mysql://u123456789_hrm:PASSWORD@localhost:3306/u123456789_hrm"
+```
+- User and database are the full names with the prefix, exactly as hPanel shows them.
+- **URL-encode** special characters in the password: `@` → `%40`, `#` → `%23`, `/` → `%2F`, `:` → `%3A`, `%` → `%25`. A password made of letters and digits only avoids this.
+- No `?sslmode` or other parameters are needed for `localhost`.
+
+### Why the app uses at most 5 connections
+Hostinger shared and Business hosting limit how many connections one database user may have open at a time. Over the limit, MySQL refuses new connections with `max_user_connections` errors, and pages fail. The app's pool is capped at **5 connections** in code (`CONNECTION_LIMIT` in `src/lib/db-config.ts`), not in the URL. That is plenty for one admin plus the daily check, and it leaves room for a migration or a backup to connect at the same time. Requests above 5 at once wait briefly for a free connection instead of opening more.
 
 ## 2. Environment variables
 Set these in hPanel → the Node.js app → **Environment variables** (never upload a `.env` file):
 
 | Variable | Value |
 |----------|-------|
-| `DATABASE_URL` | Neon **pooled** connection string |
-| `DIRECT_URL` | Neon **direct** connection string |
+| `DATABASE_URL` | `mysql://u123456789_hrm:PASSWORD@localhost:3306/u123456789_hrm` (§1) |
 | `APP_URL` | `https://renewals.abdulrehmaan.net` |
 | `APP_KEY` | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the TOTP secret and the SMTP password; don't change it later |
 | `CRON_SECRET` | 32+ random characters (`openssl rand -hex 32`). Required: the daily check (§4) sends it |
@@ -30,13 +43,23 @@ Do **not** set `FAKE_TODAY`, `SEED_DEMO`, `MAIL_TRANSPORT` or `ALLOW_LOCAL_APP_U
 
 `APP_URL` must be the real public **https** URL: invoice links (`/i/<token>`) and reset emails are built from it. In production the server **refuses to start** if it is missing, uses http, or points to localhost (`src/instrumentation.ts`); the app log then shows `Refusing to start: …`.
 
-### First-time database setup: `npm run setup:prod`
-Run once, from your machine (with the repo checked out and `npm ci` done), before the first deploy goes live:
+### Where to run the database scripts
+`setup:prod`, `npm run backup` and `prisma migrate deploy` need to reach the database. With the host `localhost`, that works **only on the Hostinger server itself**, not from your PC. Two ways:
 
-1. Create `.env.production` in the project folder (it is git-ignored; delete it afterwards or keep it somewhere private) with the same values as the table above, plus the admin's details:
+- **Over SSH (recommended).** hPanel → **Advanced → SSH Access** → enable it and note the command (e.g. `ssh -p 65002 u123456789@1.2.3.4`). On the server, use a separate checkout of the repo for these tools, not the live app folder:
+  ```sh
+  git clone git@github.com:<you>/hosting-management.git ~/hrm-tools   # or upload a .zip
+  cd ~/hrm-tools && npm ci
+  ```
+  Put `.env.production` there (below) and run the scripts from that folder. `node -v` must show 20 or newer. If it doesn't, pick the version in hPanel's Node.js settings or use the full path hPanel shows.
+- **From your PC, temporarily.** Turn on hPanel → Databases → **Remote MySQL** for your own IP. Use the server's MySQL hostname (shown on that page) instead of `localhost` in `.env.production`, run the script, then **remove the IP again**.
+
+### First-time database setup: `npm run setup:prod`
+Run once, over SSH (above), before the first deploy goes live:
+
+1. Create `.env.production` in that folder (it is git-ignored; delete it afterwards or keep it somewhere private) with the same values as the table above, plus the admin's details:
    ```sh
-   DATABASE_URL="postgresql://…-pooler….neon.tech/hrm?sslmode=require"
-   DIRECT_URL="postgresql://….neon.tech/hrm?sslmode=require"
+   DATABASE_URL="mysql://u123456789_hrm:PASSWORD@localhost:3306/u123456789_hrm"
    APP_URL="https://renewals.abdulrehmaan.net"
    APP_KEY="base64:…"
    CRON_SECRET="…"
@@ -48,7 +71,7 @@ Run once, from your machine (with the repo checked out and `npm ci` done), befor
    ```sh
    npm run setup:prod -- --env-file .env.production
    ```
-   It checks the variables (and stops with a list of what to fix), shows the database host and asks you to type `yes`, applies the migrations (`prisma migrate deploy` with `DIRECT_URL`), then creates the admin from the `ADMIN_` variables or by asking for username, email and password (hidden). Add `--yes` to skip the confirmation in a non-interactive shell.
+   It checks the variables (and stops with a list of what to fix), shows the database host and asks you to type `yes`, applies the migrations (`prisma migrate deploy` with `DATABASE_URL`; the first one also inserts the `app_locks` row the daily check uses), then creates the admin from the `ADMIN_` variables or by asking for username, email and password (hidden). Add `--yes` to skip the confirmation in a non-interactive shell.
 3. Remove `ADMIN_PASSWORD` from the file. Sign in at `/login` and set up two-step verification.
 
 It never loads demo or seed data: there are no clients, and settings and message templates use their built-in defaults until you save them in the app. Running it again is safe: applied migrations are skipped and an existing admin is left unchanged (`npm run create-admin -- --force` replaces the admin; `npm run reset-2fa` turns 2FA off if the phone is lost).
@@ -71,8 +94,6 @@ Node.js apps are available on Hostinger **Business web hosting** and **Cloud** p
 6. **Domain:** connect `renewals.abdulrehmaan.net` to the app (hPanel → the app → **Domains**; if `abdulrehmaan.net` is managed in Hostinger, the DNS record is added for you, otherwise add the record hPanel shows at your DNS provider). Turn on the free SSL certificate and **Force HTTPS**.
 7. Test: `https://renewals.abdulrehmaan.net/api/health` returns `{"status":"ok","db":"ok"}`, and login + 2FA works.
 8. **Uptime monitoring (recommended):** add `https://renewals.abdulrehmaan.net/api/health` to a free uptime monitor (e.g. UptimeRobot, every 5 minutes, alert by email). The endpoint needs no login and returns no data: HTTP 200 `{"status":"ok","db":"ok"}` when the app and the database are up, HTTP 503 `{"status":"error","db":"unreachable"}` when the database doesn't answer within 3 seconds. Alert on anything other than 200.
-
-> If you later want the database on Hostinger too, switch Prisma to MySQL (see `02-ARCHITECTURE.md` §1 note) and run a fresh migration on the Hostinger MySQL.
 
 ## 4. Daily check (hPanel Cron Jobs)
 The app runs no background workers. Once a day a cron job calls `/api/cron/check`, which runs the same idempotent check as **Check now** (reminders queued, invoices created, under the same lock, so a double call does nothing extra). The endpoint accepts `POST` and `GET`, and needs `Authorization: Bearer <CRON_SECRET>` (compared in constant time). Without the header, or with a wrong secret, it answers **401**; if `CRON_SECRET` isn't set on the server it answers **503** and nothing runs.
@@ -103,19 +124,21 @@ The app runs no background workers. Once a day a cron job calls `/api/cron/check
 ## 6. Backups
 Three layers, from automatic to manual:
 
-1. **Neon point-in-time restore** (automatic; how far back depends on the plan). Restore from the Neon console into a new branch, check it, then point the app at it.
-2. **Database dump: `npm run backup`** (the developer, monthly and before every migration). From your machine, with the PostgreSQL client tools installed (`pg_dump` 17 or newer; set `PG_DUMP` to its full path if it isn't on the PATH):
+1. **Hostinger's automatic backups** (automatic; how often and how far back depends on the plan, usually weekly or daily). hPanel → **Files → Backups → Database backups**: pick the database and a date, then **Download** (a `.sql.gz` file) or **Restore**. Restoring there overwrites the live database, so take a fresh `npm run backup` first.
+2. **Database dump: `npm run backup`** (the developer, monthly and before every migration). Over SSH in `~/hrm-tools` (§2, *Where to run the database scripts*). The MariaDB client tools are installed on Hostinger servers. Elsewhere, install them, or set `MYSQL_DUMP` to the full path of `mariadb-dump` or `mysqldump`.
    ```sh
    npm run backup -- --env-file .env.production
    ```
-   It dumps the database in `DIRECT_URL` to `backups/hrm-YYYY-MM-DD-HHMM.dump` (dated in Pakistan time; custom format, compressed; `--sql` writes plain SQL instead, `--out <folder>` picks another folder), checks the file and prints its size. The password is never printed. `backups/` is git-ignored: copy the file somewhere private (e.g. the owner's Google Drive) and delete local copies you don't need.
-   - **Restore** into an empty database (e.g. a new Neon branch): `pg_restore --no-owner --no-privileges --dbname="<direct URL of the empty database>" backups/hrm-….dump`, then point `DATABASE_URL`/`DIRECT_URL` at it.
+   It dumps the database in `DATABASE_URL` with `mariadb-dump` (or `mysqldump`) using `--single-transaction`, so the app keeps working during the dump. The file goes to `backups/hrm-YYYY-MM-DD-HHMM.sql.gz`, dated in Pakistan time and gzipped. `--sql` writes plain `.sql` instead, and `--out <folder>` picks another folder. The script checks that the file is a real dump and prints its size. The password is passed through the environment and never printed or put on the command line.
+   - Download the file to your PC (e.g. `scp -P 65002 u123456789@1.2.3.4:hrm-tools/backups/hrm-….sql.gz .`) and copy it somewhere private (e.g. the owner's Google Drive). `backups/` is git-ignored. Delete server copies you don't need.
+   - **Restore** into an empty database (e.g. a second database created in hPanel): `gunzip -c hrm-….sql.gz | mariadb -h localhost -u u123456789_hrm2 -p u123456789_hrm2`. Check it, then point `DATABASE_URL` at it, or restore into the live database in a quiet moment. phpMyAdmin → **Import** also accepts the `.sql.gz` file for small databases.
 3. **Weekly CSV export from the app** (the owner, every week, 2 minutes): **Settings → Backup** has four downloads: **Clients**, **Services**, **Payments** and **Invoices**. Click each **CSV** button and save the four files into a dated folder (e.g. `Renewals backup 2026-10-12`) in Google Drive. They open in Excel, so the business can keep going from them even without the app. The same exports are also on the Clients page (services) and the Payments page (payments for the selected dates). Every download is recorded in the audit log.
 
 ## 7. Go-live checks
 - [ ] HTTPS padlock on `renewals.abdulrehmaan.net`, http redirects to https, and the HSTS header is present.
 - [ ] `/api/health` returns `{"status":"ok","db":"ok"}`, and an uptime monitor watches it.
-- [ ] `npm run backup` works from your machine, and Settings → Backup downloads all four CSV files.
+- [ ] `npm run backup` works over SSH, hPanel → Backups lists database backups, and Settings → Backup downloads all four CSV files.
+- [ ] hPanel → Remote MySQL has no IPs left on it (unless you need one right now).
 - [ ] Logged out → every page redirects to `/login`.
 - [ ] Login + 2FA works on the owner's phone.
 - [ ] A test email lands in the Gmail inbox (not spam).
@@ -133,6 +156,6 @@ Login throttling, the audit log and the `/i/*` rate limit use the visitor's IP f
 3. If step 2 shows `203.0.113.99`, Hostinger's proxy appends to `x-forwarded-for` instead of overwriting it. Set `TRUSTED_IP_HEADER` to the header it does set itself (often `x-real-ip`), redeploy, and repeat steps 1–2.
 
 ## 8. Updating later
-1. Work on a branch and test locally against a **Neon branch** database (never the production database). For a bigger change, a second Hostinger Node.js app on a staging subdomain (e.g. `staging.abdulrehmaan.net`) with its own Neon branch works the same way.
-2. If `schema.prisma` changed: `npx prisma migrate dev` locally → commit the migration → run `npx prisma migrate deploy` against production (`DIRECT_URL`) **before** the new code goes live.
+1. Work on a branch and test locally against the local MariaDB (`npm run db:up` or `npm run db:local:start`, README → Local database), never the production database. For a bigger change, a second Hostinger Node.js app on a staging subdomain (e.g. `staging.abdulrehmaan.net`) with its own hPanel database works the same way.
+2. If `schema.prisma` changed: `npx prisma migrate dev` locally → commit the migration → take a backup (§6) → over SSH in `~/hrm-tools`: `git pull && npm ci && npx prisma migrate deploy` (with `DATABASE_URL` from `.env.production`, e.g. `node --env-file=.env.production node_modules/prisma/build/index.js migrate deploy`, or export it first) **before** the new code goes live. MySQL can't roll back a half-applied migration (DDL commits as it goes), which is why the backup comes first.
 3. Merge to `main` → Hostinger rebuilds and restarts the app (GitHub deploy), or upload the new .zip.

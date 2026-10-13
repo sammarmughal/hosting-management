@@ -55,7 +55,7 @@ function toRow(i: ListRecord, today: string): InvoiceRow {
 }
 
 function invoiceWhere(p: Omit<InvoiceParams, "page">, today: string): Prisma.InvoiceWhereInput {
-  const ci = p.q ? ({ contains: p.q, mode: "insensitive" } as const) : null
+  const ci = p.q ? ({ contains: p.q } as const) : null
   const open = { in: ["issued", "sent"] as ("issued" | "sent")[] }
   const status: Prisma.InvoiceWhereInput =
     p.status === "unpaid"
@@ -310,7 +310,9 @@ export async function getInvoiceByToken(token: string) {
     prisma.invoice.findUnique({ where: { publicToken: token }, include: detailInclude }),
     viewContext(),
   ])
-  if (!inv) return null
+  // The collation is case-insensitive; tokens are lowercase hex, but match
+  // exactly anyway so a differently-cased link never opens an invoice.
+  if (!inv || inv.publicToken !== token) return null
   return { id: inv.id, domain: inv.service.domain, document: documentData(inv, ctx.today) }
 }
 

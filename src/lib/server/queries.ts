@@ -284,7 +284,8 @@ function serviceSearch(q: string): Prisma.ServiceWhereInput {
   const needle = q.trim()
   if (!needle) return {}
   const digits = needle.replace(/\D/g, "").replace(/^0/, "")
-  const ci = { contains: needle, mode: "insensitive" } as const
+  // Case-insensitive through the columns' utf8mb4_unicode_ci collation.
+  const ci = { contains: needle } as const
   return {
     OR: [
       { domain: ci },
@@ -529,7 +530,7 @@ function pageOf(total: number, page: number) {
   return { page: p, skip: (p - 1) * PAGE_SIZE }
 }
 
-/** A PK calendar-date range as UTC instants (for timestamptz columns). */
+/** A PK calendar-date range as UTC instants (for DATETIME(3) UTC columns). */
 function instantRange(r: DateRange): Prisma.DateTimeNullableFilter | undefined {
   if (!r.from && !r.to) return undefined
   return {
@@ -543,7 +544,7 @@ export async function listReminderLog(
   filters: ReminderLogParams
 ): Promise<Page<ReminderRow>> {
   const sent = instantRange(filters)
-  const ci = filters.q ? ({ contains: filters.q, mode: "insensitive" } as const) : null
+  const ci = filters.q ? ({ contains: filters.q } as const) : null
   const where: Prisma.ReminderWhereInput = {
     recipient: "client",
     ...(filters.channel ? { channel: filters.channel as ReminderChannel } : {}),
@@ -586,7 +587,7 @@ export interface PaymentList extends Page<PaymentRow> {
 
 function paymentWhere(range: DateRange & { q?: string }): Prisma.PaymentWhereInput {
   const q = range.q?.trim()
-  const ci = q ? ({ contains: q, mode: "insensitive" } as const) : null
+  const ci = q ? ({ contains: q } as const) : null
   const methods = q
     ? Object.entries(PAYMENT_METHOD_KEYS)
         .filter(([label]) => label.toLowerCase().includes(q.toLowerCase()))

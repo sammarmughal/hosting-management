@@ -2,7 +2,7 @@
 // `SEED_DEMO=1` (development only) also loads the demo clients, services,
 // payments, reminders and notifications, plus a demo admin, into an empty DB.
 import { hash } from "@node-rs/argon2"
-import { PrismaPg } from "@prisma/adapter-pg"
+import { PrismaMariaDb } from "@prisma/adapter-mariadb"
 
 import { PrismaClient } from "@/generated/prisma/client"
 import { addDays, todayPK, type ISODate } from "@/lib/domain/dates"
@@ -10,6 +10,7 @@ import { DEFAULT_TEMPLATES } from "@/lib/domain/default-templates"
 import { dueStage, parseStages } from "@/lib/domain/stages"
 import { PAYMENT_METHOD_KEYS, type PaymentMethod } from "@/lib/domain/validation"
 import { normalisePhone } from "@/lib/domain/whatsapp"
+import { mariadbConfig } from "@/lib/db-config"
 import { toDbDate } from "@/lib/server/db-dates"
 import { SETTING_DEFAULTS } from "@/lib/server/settings-keys"
 
@@ -22,7 +23,7 @@ try {
 }
 
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  adapter: new PrismaMariaDb(mariadbConfig(process.env.DATABASE_URL)),
 })
 
 /** The start of the yearly cycle. 29 Feb → 28 Feb when needed. */

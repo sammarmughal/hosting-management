@@ -4,7 +4,7 @@ import { runCheck } from "@/lib/server/reminders"
 
 // The daily scheduled check: an hPanel cron job calls it with curl (docs/11 §4).
 // The same idempotent runCheck() as the dashboard and "Check now": it takes
-// the advisory lock, and the unique keys stop duplicate reminders, invoices
+// the app_locks 'check' row lock, and the unique keys stop duplicate reminders, invoices
 // and notifications, so overlapping or repeated runs add nothing.
 //
 // POST (the documented curl command) and GET both need

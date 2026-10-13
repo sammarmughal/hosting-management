@@ -1,4 +1,4 @@
-// Prisma 7 CLI config: migrations use the direct (non-pooled) URL (docs/11 §1).
+// Prisma 7 CLI config: migrations use DATABASE_URL (MySQL/MariaDB, docs/11 §1).
 import { defineConfig, env } from "prisma/config"
 
 // Prisma 7 no longer reads .env itself. Real env vars (hPanel, CI) win.
@@ -14,5 +14,5 @@ export default defineConfig({
     path: "prisma/migrations",
     seed: "tsx prisma/seed.ts",
   },
-  datasource: { url: env("DIRECT_URL") },
+  datasource: { url: env("DATABASE_URL") },
 })

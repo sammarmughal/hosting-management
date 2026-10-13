@@ -14,7 +14,7 @@ Tick items as they are done. Each phase ends with a **Done when** check. Estimat
 | 7 | Renewals, payments, notifications | 1 day |
 | 8 | Import/export + settings | 1.5 days |
 | 9 | Testing + hardening | 1.5 days |
-| 10 | Deploy (Hostinger Node.js + Neon) + handover | 1 day |
+| 10 | Deploy (Hostinger Node.js + MySQL/MariaDB) + handover | 1 day |
 | | **Total** | **about 2.5–3 weeks** |
 
 ---
@@ -56,7 +56,7 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 ---
 
 ## Phase 2 — Database + Prisma
-- [ ] Create a Neon project (region close to the Hostinger server, e.g. Singapore or Frankfurt). Create a `dev` branch database for local work.
+- [ ] Create the production MySQL database and user in hPanel → Databases (same server as the app, host `localhost`). For local work, run the local MariaDB (`npm run db:up`, or `npm run db:local:start` without Docker; README → Local database).
 - [x] `npm i prisma @prisma/client`, then `npx prisma init`. Paste the schema from `03-DATABASE.md`.
 - [x] `npx prisma migrate dev --name init`.
 - [x] `prisma/seed.ts`: settings + default templates (+ demo data when `SEED_DEMO=1`).
@@ -91,7 +91,7 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 ---
 
 ## Phase 5 — Dashboard + reminder check (no cron)
-- [x] `lib/server/reminders.ts`: `runCheck()` exactly as in `04-BUSINESS-LOGIC.md` §4 (transaction, advisory lock, skip superseded, `createMany skipDuplicates`, notifications, `last_check_at`).
+- [x] `lib/server/reminders.ts`: `runCheck()` exactly as in `04-BUSINESS-LOGIC.md` §4 (transaction, `app_locks` row lock, skip superseded, `createMany skipDuplicates`, notifications, `last_check_at`).
 - [x] The dashboard page calls `runCheck({ force: false })` and then loads the stats, queue and due-soon list.
 - [x] `checkNowAction`, plus the "Last checked" label.
 - [x] The bell loads the latest notifications when opened (no polling), and the Notifications page works.
@@ -138,8 +138,26 @@ Follow `06-UI-SPEC.md`. There is no database and no auth yet (the `(app)` layout
 
 ---
 
+## MySQL/MariaDB move (13 Oct 2026)
+Owner decision: the database moves from Neon Postgres to Hostinger's MySQL/MariaDB on the same server as the app.
+
+- [x] Schema on `provider = "mysql"` (`DATETIME(3)` in UTC, explicit `@db.Text`, `Session.id` `Char(64)`, utf8mb4), with fresh migrations.
+- [x] `@prisma/adapter-mariadb` instead of `@prisma/adapter-pg`; pool capped at 5 connections, session time zone pinned to UTC (`db-config.ts`). One `DATABASE_URL`, no `DIRECT_URL`.
+- [x] Check lock: `app_locks` row 'check' with `FOR UPDATE SKIP LOCKED` instead of the advisory lock.
+- [x] Invoice counter: `INSERT … ON DUPLICATE KEY UPDATE` + `SELECT` in the same transaction.
+- [x] Rate limit upsert: `ON DUPLICATE KEY UPDATE` + `SELECT` in one transaction.
+- [x] Search case-insensitive through the `utf8mb4_unicode_ci` collation (no `mode: 'insensitive'`).
+- [x] Public invoice tokens as 64 lowercase hex characters, compared exactly.
+- [x] Local MariaDB 11.8: Docker (`npm run db:up` / `db:down`) or portable without admin rights (`npm run db:local:start` / `db:local:stop`, data in git-ignored `.local-db/`); backups with `mariadb-dump`.
+- [x] Tests: `reset-db.ts` helper, lock held → check skips, parallel checks → no duplicates, parallel "Create invoice now" → one invoice and no number gap, UTC round-trip with the DB clock in Asia/Karachi.
+- [x] Docs updated.
+- [x] Lint, unit + integration tests, build and Playwright green against MariaDB 11.8.9 (portable server), with the `mariadb@3.5.4` override.
+- [ ] Confirm the Hostinger MariaDB/MySQL version in phpMyAdmin and set it in `docker-compose.yml`.
+
+---
+
 ## Phase 10 — Deploy + handover
-- [ ] Follow `11-DEPLOYMENT.md`: Neon (§1), the Hostinger Node.js app at `https://renewals.abdulrehmaan.net` (§3) and the hPanel cron job for the daily check (§4).
+- [ ] Follow `11-DEPLOYMENT.md`: the Hostinger MySQL database (§1), the Hostinger Node.js app at `https://renewals.abdulrehmaan.net` (§3) and the hPanel cron job for the daily check (§4).
 - [ ] Import the real client list and confirm the numbers with the owner.
 - [ ] Walk the owner through the routine (below).
 - [ ] Hand over: the URL, username, 2FA set up on the owner's phone, and the recovery codes saved offline.

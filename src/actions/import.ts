@@ -58,7 +58,7 @@ export async function commitImportAction(
         ]
         const sameClient = contact.length
           ? await tx.client.findFirst({
-              where: { name: { equals: client.name, mode: "insensitive" }, OR: contact },
+              where: { name: { equals: client.name }, OR: contact },
             })
           : null
         if (sameClient)

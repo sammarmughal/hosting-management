@@ -22,13 +22,13 @@ import { renewService } from "@/lib/server/renewals"
 import { updateSettings } from "@/lib/server/settings"
 import { SETTING_DEFAULTS } from "@/lib/server/settings-keys"
 
+import { resetDb } from "../helpers/reset-db"
+
 const TODAY = "2026-10-10"
 const enabled = !!process.env.TEST_DATABASE_URL
 
 async function reset() {
-  await prisma.$executeRaw`TRUNCATE clients, services, payments, reminders, notifications,
-    settings, message_templates, audit_log, invoices, invoice_counters, rate_limits
-    RESTART IDENTITY CASCADE`
+  await resetDb(prisma, ["clients", "settings", "message_templates", "audit_log", "invoice_counters", "rate_limits"])
   for (const [key, value] of Object.entries(SETTING_DEFAULTS))
     await prisma.setting.create({ data: { key, value } })
   await updateSettings({
@@ -99,6 +99,35 @@ describe.skipIf(!enabled)("invoices (docs/13 §2–§5)", () => {
     ).rejects.toThrow("rollback")
     const after = await prisma.$transaction((tx) => allocateInvoiceNumber(tx, TODAY, "INV"))
     expect(after).toBe("INV-2026-0013")
+  })
+
+  it("two parallel 'Create invoice now' clicks make one invoice and use one number", async () => {
+    const s = await service(20)
+    for (let round = 0; round < 5; round++) {
+      const results = await Promise.all([createInvoiceNow(s.id), createInvoiceNow(s.id)])
+      for (const r of results) expect(r).not.toHaveProperty("error")
+      const ok = results as { id: number; number: string; created: boolean }[]
+      // Both answers point at the same invoice; at most one of them made it.
+      expect(new Set(ok.map((r) => r.id)).size).toBe(1)
+      expect(ok.filter((r) => r.created).length).toBe(round === 0 ? 1 : 0)
+    }
+    expect(await prisma.invoice.count({ where: { serviceId: s.id } })).toBe(1)
+    // The losing transaction rolled back its number: no gap.
+    const next = await prisma.$transaction((tx) => allocateInvoiceNumber(tx, TODAY, "INV"))
+    expect(next).toBe("INV-2026-0002")
+  })
+
+  it("stores timestamps in UTC whatever the server clock's zone", async () => {
+    const at = new Date("2026-10-10T23:30:15.123Z")
+    const row = await prisma.auditLog.create({ data: { action: "test.utc", createdAt: at } })
+    const back = await prisma.auditLog.findUniqueOrThrow({ where: { id: row.id } })
+    expect(back.createdAt.toISOString()).toBe(at.toISOString())
+    // A server-side default (CURRENT_TIMESTAMP) lands in UTC too.
+    const [raw] = await prisma.$queryRaw<{ diff: bigint | number }[]>`
+      SELECT ABS(TIMESTAMPDIFF(SECOND, UTC_TIMESTAMP(3), CURRENT_TIMESTAMP(3))) AS diff`
+    expect(Number(raw?.diff)).toBeLessThan(5)
+    const fresh = await prisma.invoiceCounter.create({ data: { year: 1999 } })
+    expect(Math.abs(fresh.updatedAt.getTime() - Date.now())).toBeLessThan(60_000)
   })
 
   it("the daily check creates one invoice per cycle inside the lead window (§4)", async () => {
@@ -268,9 +297,12 @@ describe.skipIf(!enabled)("PDF, public link and sharing (docs/13 §7–§10)", (
     const res = await createInvoiceNow(s.id)
     if ("error" in res) throw new Error(res.error)
     const { publicToken } = await prisma.invoice.findUniqueOrThrow({ where: { id: res.id } })
-    expect(publicToken).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(publicToken).toMatch(/^[0-9a-f]{64}$/)
     expect((await getInvoiceByToken(publicToken))?.document.number).toBe(res.number)
-    expect((await lookupPublicInvoice("x".repeat(43), "203.0.113.9")).ok).toBe(false)
+    // Right shape but unknown, and the right token in upper case: both rejected.
+    expect((await lookupPublicInvoice("0".repeat(64), "203.0.113.9")).ok).toBe(false)
+    expect((await lookupPublicInvoice(publicToken.toUpperCase(), "203.0.113.9")).ok).toBe(false)
+    expect(await getInvoiceByToken(publicToken.toUpperCase())).toBeNull()
     expect((await lookupPublicInvoice("../etc", "203.0.113.9")).ok).toBe(false)
 
     const fresh = await regeneratePublicLink(res.id)

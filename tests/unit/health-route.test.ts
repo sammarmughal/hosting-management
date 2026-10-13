@@ -13,7 +13,7 @@ describe("GET /api/health", () => {
   })
 
   it("is ok with the database reachable, and says nothing else", async () => {
-    queryRaw.mockResolvedValue([{ "?column?": 1 }])
+    queryRaw.mockResolvedValue([{ "1": 1 }])
     const res = await GET()
     expect(res.status).toBe(200)
     expect(res.headers.get("cache-control")).toBe("no-store")
@@ -22,13 +22,13 @@ describe("GET /api/health", () => {
 
   it("answers 503 without the error text when the database fails", async () => {
     queryRaw.mockRejectedValue(
-      new Error("password authentication failed for user neondb_owner")
+      new Error("Access denied for user 'u123456789_hrm'@'localhost' (using password: YES)")
     )
     const res = await GET()
     expect(res.status).toBe(503)
     const body = await res.text()
     expect(JSON.parse(body)).toEqual({ status: "error", db: "unreachable" })
-    expect(body).not.toMatch(/password|neondb/)
+    expect(body).not.toMatch(/password|denied|u123456789/)
   })
 
   it("gives up after a few seconds when the database hangs", async () => {

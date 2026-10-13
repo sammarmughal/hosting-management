@@ -2,10 +2,11 @@
 // The only way to create the single admin: there is no sign-up page.
 import { randomBytes } from "node:crypto"
 
-import { PrismaPg } from "@prisma/adapter-pg"
+import { PrismaMariaDb } from "@prisma/adapter-mariadb"
 import { z } from "zod"
 
 import { PrismaClient } from "@/generated/prisma/client"
+import { mariadbConfig } from "@/lib/db-config"
 
 import { ask, promptAdmin, saveAdmin } from "./admin"
 
@@ -21,7 +22,7 @@ async function main() {
       `APP_KEY is not set. Add this to your environment:\nAPP_KEY="base64:${randomBytes(32).toString("base64")}"\n`
     )
   const prisma = new PrismaClient({
-    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+    adapter: new PrismaMariaDb(mariadbConfig(process.env.DATABASE_URL)),
   })
   try {
     const force = process.argv.includes("--force")

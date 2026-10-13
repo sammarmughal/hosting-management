@@ -4,17 +4,15 @@ import { appUrlProblem } from "@/lib/domain/app-url"
 
 type Env = Record<string, string | undefined>
 
-const POSTGRES_URL = /^postgres(ql)?:\/\//
+const MYSQL_URL = /^(mysql|mariadb):\/\//
 
 /** Every problem with the production environment, in the order to fix them. */
 export function productionEnvProblems(env: Env): string[] {
   const problems: string[] = []
-  for (const name of ["DATABASE_URL", "DIRECT_URL"]) {
-    const v = env[name]?.trim()
-    if (!v) problems.push(`${name} is not set (Neon → Connect).`)
-    else if (!POSTGRES_URL.test(v))
-      problems.push(`${name} must be a postgresql:// connection string.`)
-  }
+  const db = env.DATABASE_URL?.trim()
+  if (!db) problems.push("DATABASE_URL is not set (hPanel → Databases → MySQL Databases).")
+  else if (!MYSQL_URL.test(db))
+    problems.push("DATABASE_URL must be a mysql:// connection string.")
   const appKey = env.APP_KEY?.trim()
   if (!appKey) problems.push("APP_KEY is not set (openssl rand -base64 32).")
   else if (Buffer.from(appKey.replace(/^base64:/, ""), "base64").length !== 32)
@@ -30,7 +28,7 @@ export function productionEnvProblems(env: Env): string[] {
   return problems
 }
 
-/** Host and database name only, never the password: "ep-x.aws.neon.tech/hrm". */
+/** Host and database name only, never the password: "localhost/u123456789_hrm". */
 export function describeDatabase(url: string | undefined): string {
   try {
     const u = new URL(url ?? "")
