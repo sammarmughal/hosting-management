@@ -158,7 +158,8 @@ Owner decision: the database moves from Neon Postgres to Hostinger's MySQL/Maria
 - [x] `npm ci` works without `DATABASE_URL`: `prisma.config.ts` reads it optionally, so `prisma generate` (postinstall) runs; `migrate`/`db seed`/the app still stop clearly without it.
 - [x] README: copy `.env.example` to `.env` before `npm ci`.
 - [x] `npm test` leaves the integration tests out (instead of failing) when `TEST_DATABASE_URL` isn't set.
-- [x] Checks: `tests/unit/prisma-config.test.ts` (fast) and `npm run check:clean-install` (a fresh copy of the repo, real `npm ci`, no `DATABASE_URL`).
+- [x] `npm run build` works without `DATABASE_URL`: the Prisma client in `src/lib/server/db.ts` is created on first use, not on import.
+- [x] Checks: `tests/unit/prisma-config.test.ts` and `tests/unit/db-lazy.test.ts` (fast), and `npm run check:clean-install` (a fresh copy of the repo, real `npm ci` and `npm run build`, no `DATABASE_URL`).
 
 ## Sign in with Google (13 Oct 2026, docs/05 §3a, docs/11 §2a)
 - [x] "Sign in with Google" on /login (arctic 3.7.0, PKCE + state, scope openid email), allowlist `ADMIN_EMAILS`, verified emails only, letter case ignored.

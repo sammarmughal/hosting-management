@@ -5,7 +5,8 @@
 // node_modules, build output and .env files) to a temporary folder, runs `npm ci`
 // there with DATABASE_URL and the test URLs removed from the environment,
 // and checks that the Prisma client was generated. Then checks that commands
-// needing the database still stop clearly without it. Exits non-zero on any
+// needing the database still stop clearly without it, and that the
+// production build works without it. Exits non-zero on any
 // failure; the temporary folder is removed unless --keep is given.
 import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
@@ -92,6 +93,11 @@ try {
     migrate.status !== 0 && /datasource\.url property is required/.test(migrate.output),
     "prisma migrate status stops clearly without DATABASE_URL"
   )
+
+  // `next build` imports every route; none may need the database to load.
+  const build = run("npm", ["run", "build"])
+  check(build.status === 0, "npm run build succeeds without DATABASE_URL")
+  if (build.status !== 0) console.log(build.output.slice(-2000))
 } finally {
   if (keep) console.log(`kept ${dir}`)
   else fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 })

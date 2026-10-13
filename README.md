@@ -43,7 +43,7 @@ SEED_DEMO=1 npm run db:seed     # settings + templates, plus demo clients and a 
 npm run dev                     # http://localhost:3000
 ```
 
-`npm ci` works without `DATABASE_URL` (a fresh checkout, or a host that sets the variable only at runtime); commands that touch the database (`db:migrate`, `db:seed`, `setup:prod`, the app itself) stop with a clear error until it's set. `npm run check:clean-install` proves the first part: it installs a fresh copy of the repo with no `DATABASE_URL`.
+`npm ci` and `npm run build` work without `DATABASE_URL` (a fresh checkout, or a host that sets the variable only at runtime); commands that touch the database (`db:migrate`, `db:seed`, `setup:prod`, the app's first query) stop with a clear error until it's set. `npm run check:clean-install` proves the first part: it installs and builds a fresh copy of the repo with no `DATABASE_URL`.
 
 With `SEED_DEMO=1` the demo admin is `rehman` / `Renewals2026!` (**development only**; never seed demo data in production). The first sign-in asks you to scan a QR code with an authenticator app and to save the recovery codes.
 
