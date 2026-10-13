@@ -154,6 +154,12 @@ Owner decision: the database moves from Neon Postgres to Hostinger's MySQL/Maria
 - [x] Lint, unit + integration tests, build and Playwright green against MariaDB 11.8.9 (portable server), with the `mariadb@3.5.4` override.
 - [ ] Confirm the Hostinger MariaDB/MySQL version in phpMyAdmin and set it in `docker-compose.yml`.
 
+## Clean install (13 Oct 2026)
+- [x] `npm ci` works without `DATABASE_URL`: `prisma.config.ts` reads it optionally, so `prisma generate` (postinstall) runs; `migrate`/`db seed`/the app still stop clearly without it.
+- [x] README: copy `.env.example` to `.env` before `npm ci`.
+- [x] `npm test` leaves the integration tests out (instead of failing) when `TEST_DATABASE_URL` isn't set.
+- [x] Checks: `tests/unit/prisma-config.test.ts` (fast) and `npm run check:clean-install` (a fresh copy of the repo, real `npm ci`, no `DATABASE_URL`).
+
 ## Sign in with Google (13 Oct 2026, docs/05 §3a, docs/11 §2a)
 - [x] "Sign in with Google" on /login (arctic 3.7.0, PKCE + state, scope openid email), allowlist `ADMIN_EMAILS`, verified emails only, letter case ignored.
 - [x] Rejected accounts: the same "Invalid credentials.", logged (`login.google_rejected`) and throttled like passwords; success logs the Google email.

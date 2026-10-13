@@ -35,13 +35,15 @@ The app runs no background workers. It checks for due reminders and invoices whe
 Needs **Node.js 20.9+** (22 recommended) and **MariaDB 10.6+ / MySQL 8.0+** (locally the Docker database below).
 
 ```sh
-npm ci                          # also runs `prisma generate` (postinstall)
-cp .env.example .env            # fill in the variables below
+cp .env.example .env            # first: fill in the variables below
+npm ci                          # also runs `prisma generate` (postinstall; needs no database)
 npm run db:up                   # local MariaDB in Docker, or `npm run db:local:start` without Docker (see "Local database")
 npm run db:migrate              # applies prisma/migrations
 SEED_DEMO=1 npm run db:seed     # settings + templates, plus demo clients and a demo admin
 npm run dev                     # http://localhost:3000
 ```
+
+`npm ci` works without `DATABASE_URL` (a fresh checkout, or a host that sets the variable only at runtime); commands that touch the database (`db:migrate`, `db:seed`, `setup:prod`, the app itself) stop with a clear error until it's set. `npm run check:clean-install` proves the first part: it installs a fresh copy of the repo with no `DATABASE_URL`.
 
 With `SEED_DEMO=1` the demo admin is `rehman` / `Renewals2026!` (**development only**; never seed demo data in production). The first sign-in asks you to scan a QR code with an authenticator app and to save the recovery codes.
 
@@ -144,8 +146,9 @@ WhatsApp uses `wa.me` click-to-chat links only (`WhatsAppProvider` "link" in `sr
 
 ```sh
 npm run lint
-npm test                         # unit tests + integration tests (when TEST_DATABASE_URL is set)
+npm test                         # unit tests + integration tests (when TEST_DATABASE_URL is set; left out otherwise)
 npm run build && npm run test:e2e   # Playwright against the standalone production build
+npm run check:clean-install      # a fresh copy of the repo installs with no DATABASE_URL (CI-style, 1–2 min)
 ```
 
 - Integration tests (`tests/integration`) use `TEST_DATABASE_URL`, migrated automatically and truncated by the tests; mail uses `jsonTransport`, and one test uses a closed port to check that real SMTP errors are stored.

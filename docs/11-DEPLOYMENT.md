@@ -127,7 +127,7 @@ Node.js apps are available on Hostinger **Business web hosting** and **Cloud** p
    |-------|-------|
    | Framework preset | Next.js (auto-detected) |
    | Node.js version | 20 or 22 |
-   | Install command | `npm ci` (runs `prisma generate` through `postinstall`) |
+   | Install command | `npm ci` (runs `prisma generate` through `postinstall`; that step needs no database, so it works even if hPanel's variables aren't visible during install) |
    | Build command | `npm run build` |
    | Entry file / start | `.next/standalone/server.js` (or `npm start`, which runs the same file). The `postbuild` script (`scripts/postbuild.mjs`) copies `public/` and `.next/static/` next to it and removes any `.env` file from the build output. The server listens on `PORT`, which Hostinger sets. |
 5. Add the environment variables from §2, then redeploy.

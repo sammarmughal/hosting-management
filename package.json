@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
+    "check:clean-install": "node scripts/check-clean-install.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "shots": "tsx scripts/screenshots.ts",
