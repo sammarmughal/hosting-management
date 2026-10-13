@@ -1,7 +1,8 @@
 // npm run check:clean-install   (CI-style check, a minute or two)
 //
 // A fresh checkout must install without DATABASE_URL: copies the files git
-// tracks (no .env, no node_modules) to a temporary folder, runs `npm ci`
+// tracks (no .env, no node_modules; outside a git repo, the folder minus
+// node_modules, build output and .env files) to a temporary folder, runs `npm ci`
 // there with DATABASE_URL and the test URLs removed from the environment,
 // and checks that the Prisma client was generated. Then checks that commands
 // needing the database still stop clearly without it. Exits non-zero on any
@@ -34,17 +35,48 @@ function run(command, args) {
   return { status: r.status, output: `${r.stdout ?? ""}\n${r.stderr ?? ""}` }
 }
 
+/** What a fresh checkout has: git's tracked files, or (no git) the source tree. */
+function sourceFiles() {
+  try {
+    return execFileSync("git", ["ls-files"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: "pipe",
+    })
+      .split("\n")
+      .filter(Boolean)
+  } catch {
+    const SKIP = new Set([
+      ".git",
+      "node_modules",
+      ".next",
+      ".local-db",
+      "test-results",
+      "backups",
+    ])
+    const out = []
+    const walk = (rel) => {
+      for (const e of fs.readdirSync(path.join(root, rel), { withFileTypes: true })) {
+        const p = rel ? `${rel}/${e.name}` : e.name
+        if (SKIP.has(e.name) || p === "src/generated") continue
+        if (e.isDirectory()) walk(p)
+        else if (!/^\.env/.test(e.name) || e.name === ".env.example") out.push(p)
+      }
+    }
+    walk("")
+    return out
+  }
+}
+
 try {
-  const files = execFileSync("git", ["ls-files"], { cwd: root, encoding: "utf8" })
-    .split("\n")
-    .filter(Boolean)
+  const files = sourceFiles()
   for (const f of files) {
     fs.mkdirSync(path.join(dir, path.dirname(f)), { recursive: true })
     fs.copyFileSync(path.join(root, f), path.join(dir, f))
   }
   check(
     !fs.existsSync(path.join(dir, ".env")),
-    `fresh copy of ${files.length} tracked files, no .env (${dir})`
+    `fresh copy of ${files.length} source files, no .env (${dir})`
   )
 
   const ci = run("npm", ["ci", "--no-audit", "--no-fund"])
