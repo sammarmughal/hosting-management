@@ -46,6 +46,12 @@ export default defineConfig({
       HOSTNAME: "localhost",
       APP_KEY: process.env.APP_KEY ?? "",
       SESSION_COOKIE_NAME: process.env.SESSION_COOKIE_NAME ?? "hrm_session",
+      // Made-up Google client: the button and the redirect can be tested, the
+      // Google side can't. Password login stays on for the other specs.
+      GOOGLE_CLIENT_ID: "e2e-test-client.apps.googleusercontent.com",
+      GOOGLE_CLIENT_SECRET: "e2e-test-secret",
+      ADMIN_EMAILS: "abdulrehmaan060@gmail.com",
+      PASSWORD_LOGIN_ENABLED: "1",
     },
   },
 })

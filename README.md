@@ -88,6 +88,10 @@ Both servers run their clock in Pakistan time (UTC+5) on purpose: the tests prov
 | `APP_KEY` | yes | `base64:` + 32 random bytes (`openssl rand -base64 32`). Encrypts the TOTP secret and the SMTP password (AES-256-GCM). |
 | `SESSION_COOKIE_NAME` | no | Defaults to `hrm_session`. |
 | `CRON_SECRET` | yes (production) | 32+ random characters (`openssl rand -hex 32`). The daily check (`/api/cron/check`) requires `Authorization: Bearer <CRON_SECRET>`; the hPanel cron job sends it with curl (docs/11 §4). Without it the route answers 503 and the daily check doesn't run. |
+| `GOOGLE_CLIENT_ID` | no | The OAuth client ID for **Sign in with Google** (`…apps.googleusercontent.com`; Google Cloud Console setup: docs/11 §2a). Google sign-in is on only when this, `GOOGLE_CLIENT_SECRET` and `ADMIN_EMAILS` are all set. |
+| `GOOGLE_CLIENT_SECRET` | no | The OAuth client secret. Secret: hPanel env only, never in git. |
+| `ADMIN_EMAILS` | no | The only Google accounts that may sign in, comma-separated (letter case doesn't matter; Gmail dots and `+tags` do). Starts with `abdulrehmaan060@gmail.com`. Any other account gets "Invalid credentials." and is logged. Google sign-in **skips our own 2FA**, so these accounts must have Google 2-Step Verification on. |
+| `PASSWORD_LOGIN_ENABLED` | no | Default `1`. `0` turns off email + password sign-in and password reset, leaving only Google. Ignored while Google sign-in isn't set up, so you can't lock yourself out. |
 | `TRUSTED_IP_HEADER` | no | The request header holding the visitor's IP, for login throttling and the `/i/*` rate limit. Default `x-forwarded-for` (first value). Verify after deploy (docs/11 §7). |
 | `ALLOW_LOCAL_APP_URL` | local only | `1` lets the production build run on this machine with a localhost `APP_URL` (`npm start`, e2e). **Never set on a host**: in production the server refuses to start unless `APP_URL` is the public https URL. |
 | `TEST_DATABASE_URL` | dev/CI | A separate, disposable database for integration tests. Wiped by the tests. |

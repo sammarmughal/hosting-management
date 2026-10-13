@@ -10,6 +10,8 @@ const PUBLIC = [
   /^\/forgot$/,
   /^\/reset\/[^/]+$/,
   /^\/api\/health$/,
+  // Sign in with Google: the start redirect and Google's callback (state + PKCE checked there).
+  /^\/api\/auth\/google(\/callback)?$/,
   // Bearer-token protected, see the route (no cookie from a scheduler).
   /^\/api\/cron\/check$/,
   /^\/(403|419|500)$/,

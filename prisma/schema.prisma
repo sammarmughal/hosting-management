@@ -60,6 +60,7 @@ enum AttemptStep {
   totp
   recovery
   reset
+  google   // Sign in with Google (docs/05 §3a): allowlisted or rejected accounts
 }
 
 model LoginAttempt {

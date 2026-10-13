@@ -66,11 +66,16 @@ describe("server actions are guarded (docs/05 §2)", () => {
 })
 
 describe("route handlers are guarded", () => {
-  /** Public by design: health check, the token-checked invoice link, and the bearer-token cron route. */
+  /**
+   * Public by design: health check, the token-checked invoice link, the
+   * bearer-token cron route, and Sign in with Google (start + callback).
+   */
   const PUBLIC = [
     path.join("api", "health", "route.ts"),
     path.join("i", "[token]", "pdf", "route.ts"),
     path.join("api", "cron", "check", "route.ts"),
+    path.join("api", "auth", "google", "route.ts"),
+    path.join("api", "auth", "google", "callback", "route.ts"),
   ]
   const routes: string[] = []
   const walk = (dir: string) => {
@@ -87,6 +92,12 @@ describe("route handlers are guarded", () => {
       const source = fs.readFileSync(path.join(ROUTES, route), "utf8")
       if (route.endsWith(path.join("cron", "check", "route.ts")))
         expect(source).toMatch(/timingSafeEqual/)
+      // The callback checks the state in constant time before anything else,
+      // then the allowlist + throttle (completeGoogleLogin).
+      else if (route.endsWith(path.join("google", "callback", "route.ts"))) {
+        expect(source).toMatch(/sameState\(state, storedState\)[\s\S]*completeGoogleLogin\(/)
+        expect(source).toMatch(/timingSafeEqual/)
+      }
       else if (!PUBLIC.includes(route)) expect(source).toMatch(/await requireAdmin\(\)/)
     })
   }

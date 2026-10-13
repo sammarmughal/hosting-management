@@ -5,6 +5,7 @@
 import { redirect } from "next/navigation"
 import { z } from "zod"
 
+import { authConfig } from "@/lib/domain/google-auth"
 import { deviceLabel } from "@/lib/domain/user-agent"
 import { audit } from "@/lib/server/audit"
 import {
@@ -27,13 +28,8 @@ import {
   startSession,
   userAgent,
 } from "@/lib/server/session"
-import {
-  failureDelay,
-  failuresLastHour,
-  isLocked,
-  LIMITS,
-  recordAttempt,
-} from "@/lib/server/throttle"
+import { alertOnUnusualActivity } from "@/lib/server/login-alert"
+import { failureDelay, isLocked, recordAttempt } from "@/lib/server/throttle"
 import type { ActionResult } from "@/types/actions"
 
 const INVALID = "Invalid credentials."
@@ -49,6 +45,11 @@ const loginInput = z.object({
 })
 
 export async function loginAction(identifier: string, password: string): Promise<ActionResult> {
+  // Turned off (PASSWORD_LOGIN_ENABLED=0 with Google configured): same answer as a wrong password.
+  if (!authConfig(process.env).passwordLogin) {
+    await failureDelay()
+    return { ok: false, error: INVALID }
+  }
   const parsed = loginInput.safeParse({ identifier, password })
   if (!parsed.success) return { ok: false, error: INVALID }
   const ip = await clientIp()
@@ -79,23 +80,6 @@ export async function loginAction(identifier: string, password: string): Promise
   await prisma.session.deleteMany({ where: { expiresAt: { lt: new Date() } } })
   await startSession(admin.id, "password_ok")
   redirect(admin.totpEnabled ? "/2fa" : "/2fa/setup")
-}
-
-/** Email the admin once when failures reach 10 in an hour (docs/05 §4). */
-async function alertOnUnusualActivity() {
-  if ((await failuresLastHour()) !== LIMITS.alertPerHour) return
-  try {
-    const s = await getAppSettings()
-    if (!s.adminEmail) return
-    await sendMail(s, {
-      to: s.adminEmail,
-      subject: "Unusual login activity on Renewals",
-      html: `<p>There were ${LIMITS.alertPerHour} failed sign-in attempts in the last hour.</p><p>If this wasn't you, nothing is needed: the attempts are being blocked. Consider changing your password.</p>`,
-      text: `There were ${LIMITS.alertPerHour} failed sign-in attempts in the last hour. If this wasn't you, consider changing your password.`,
-    })
-  } catch (err) {
-    console.error("unusual activity alert failed", err)
-  }
 }
 
 /** Promotes the session to full and records the sign-in. Redirects to the dashboard. */
@@ -212,6 +196,8 @@ export async function finishSetupAction(): Promise<ActionResult> {
 export async function requestResetAction(email: string): Promise<ActionResult> {
   const parsed = z.email().safeParse(String(email ?? "").trim().toLowerCase())
   if (!parsed.success) return { ok: false, error: "Enter a valid email address." }
+  // No password sign-in, so no reset links either (the answer stays the same).
+  if (!authConfig(process.env).passwordLogin) return { ok: true }
   const ip = await clientIp()
   // Always the same answer, whether or not the address exists.
   if (await isLocked(ip, parsed.data)) return { ok: true }

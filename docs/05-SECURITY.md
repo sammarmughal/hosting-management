@@ -66,6 +66,31 @@ export async function requireAdmin(): Promise<{ admin: Admin; session: Session }
 - The QR code is generated **on our server** with `qrcode` → an SVG string rendered in the page. Never use an external QR service.
 - Recovery codes: 8 codes of the form `xxxxx-xxxxx`, stored as argon2 hashes, each usable once, and they can be regenerated in Settings.
 
+## 3a. Sign in with Google (owner decision, 13 Oct 2026)
+
+```
+/login → "Sign in with Google" → GET /api/auth/google
+   sets hrm_google_state + hrm_google_verifier (HttpOnly, SameSite=Lax, Path=/api/auth/google, 10 min)
+   → accounts.google.com (scope openid email, PKCE S256, prompt=select_account)
+   → GET /api/auth/google/callback?code&state
+        state == cookie (constant time)?  no → /login?error=expired
+        code → ID token (arctic, server to server, client secret)
+        iss = accounts.google.com, aud = our client ID, not expired
+        email_verified === true            no → rejected
+        lower(email) in ADMIN_EMAILS       no → rejected
+        throttle (per IP + per email)      locked → /login?error=locked
+   ok → session { stage: 'full' } for the single admin (no /2fa step) → /dashboard
+   rejected → /login?error=invalid → "Invalid credentials."
+```
+- **Who can sign in:** only the addresses in `ADMIN_EMAILS` (env, comma-separated), compared without regard to letter case. Gmail dots and `+tags` aren't folded, so the address must match exactly. Every allowlisted account signs in as **the one admin**. The audit log's `login.success` row records `method: "google"` and the `googleEmail` used.
+- **Verified email only:** `email_verified` must be the boolean `true`.
+- **Our 2FA is skipped.** Google handles the second factor, so **the allowlisted Google accounts must have Google 2-Step Verification on**. Google doesn't reliably report this to us, so we can't check it. docs/11 §2a and the owner's guide say so.
+- **Rejected attempts** are logged as `login.google_rejected` with the email and the reason (`not_allowed`, `unverified`, `invalid_token`, `exchange_failed`, `no_admin`). They also go into `login_attempts` (step `google`), so the §4 limits and the unusual-activity email cover Google too. The answer is always the same "Invalid credentials.".
+- **ID token:** it comes straight from Google's token endpoint over TLS, in exchange for our client secret, so its signature isn't checked (OpenID Connect Core §3.1.3.7). The issuer, audience and expiry are checked.
+- **Cookies:** the flow cookies are `Lax` because Google's redirect back is cross-site. They are cleared on every callback. The session cookie stays `Strict`, so the callback answers with a same-site page that moves on to `/dashboard`; a redirect would still count as cross-site, and the new cookie wouldn't be sent.
+- **Email + password + 2FA stays as the fallback.** `PASSWORD_LOGIN_ENABLED=0` turns it off (also password reset and the /forgot page), but only while Google sign-in is fully configured. Otherwise the flag is ignored, so the owner can't be locked out. `setup:prod` warns about it.
+- **Library:** `arctic` (pinned 3.7.0) for the authorization URL, PKCE and the code exchange.
+
 ## 4. Brute-force protection (`lib/server/throttle.ts`, DB-backed so limits survive app restarts)
 
 | Rule | Limit | Lockout |
@@ -135,12 +160,13 @@ X-Robots-Tag: noindex, nofollow
 | `DATABASE_URL`, `APP_KEY` | Env vars (Hostinger env). Never in git. `.env.example` has placeholders |
 | SMTP password | `settings.smtp_password_enc` (AES-256-GCM with APP_KEY). The UI never shows it back (empty field = unchanged) |
 | TOTP secret | `admins.totp_secret_enc` (encrypted) |
+| `GOOGLE_CLIENT_SECRET` | Env var (Hostinger env) only. If it leaks: Google Cloud Console → the OAuth client → **Add secret**, put the new one in the env var and redeploy, then delete the old secret (docs/11 §2a) |
 
 Rotating `APP_KEY` requires re-entering the SMTP password and re-doing the 2FA setup. Document this in the README.
 
 ## 11. Audit
 
-Log these to `audit_log`: `login.success`, `login.failed`, `login.locked`, `2fa.setup`, `2fa.failed`, `password.changed`, `password.reset`, `sessions.revoked`, `client.create|update|delete`, `service.create|update|delete|renew|cancel`, `reminder.email.sent|failed`, `reminder.whatsapp.opened|sent`, `reminder.skipped`, `settings.update`, `export.csv`, `import.csv`.
+Log these to `audit_log`: `login.success` (with `method: "google"` and `googleEmail` for Google sign-ins), `login.failed`, `login.google_rejected`, `login.locked`, `2fa.setup`, `2fa.failed`, `password.changed`, `password.reset`, `sessions.revoked`, `client.create|update|delete`, `service.create|update|delete|renew|cancel`, `reminder.email.sent|failed`, `reminder.whatsapp.opened|sent`, `reminder.skipped`, `settings.update`, `export.csv`, `import.csv`.
 
 The Settings → Security tab shows the last 20 login events and the active sessions.
 
@@ -150,6 +176,7 @@ The Settings → Security tab shows the last 20 login events and the active sess
 - [ ] After the password step, typing `/dashboard` → redirected (stage `password_ok` is not enough).
 - [ ] Calling any Server Action without a session (e.g. a replayed request with the cookie removed) → rejected.
 - [ ] The 6th wrong password → lockout, and it still holds after an app restart (DB-backed).
+- [ ] Sign in with Google: the owner's account gets in; any other Google account gets "Invalid credentials." and shows up as `login.google_rejected` in the audit log. 2-Step Verification is on for every address in `ADMIN_EMAILS`.
 - [ ] A client name `<img src=x onerror=alert(1)>` is shown as text everywhere, including the template preview.
 - [ ] The CSP header is present, and there are no CSP errors in the console on any page.
 - [ ] No test or staging copy uses production data, and there is no `NEXT_PUBLIC_` secret in the JS bundle (search the build output).

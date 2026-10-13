@@ -38,6 +38,24 @@ describe("setup:prod environment checks", () => {
       /DATABASE_URL is not set/
     )
   })
+  it("checks the Sign in with Google settings", () => {
+    const google = {
+      GOOGLE_CLIENT_ID: "id.apps.googleusercontent.com",
+      GOOGLE_CLIENT_SECRET: "secret",
+      ADMIN_EMAILS: "abdulrehmaan060@gmail.com",
+    }
+    expect(productionEnvProblems({ ...GOOD, ...google })).toEqual([])
+    expect(productionEnvProblems({ ...GOOD, ...google, PASSWORD_LOGIN_ENABLED: "0" })).toEqual([])
+    expect(productionEnvProblems({ ...GOOD, GOOGLE_CLIENT_ID: "id" })).toEqual([
+      "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and ADMIN_EMAILS together, or none of them.",
+    ])
+    expect(productionEnvProblems({ ...GOOD, ...google, ADMIN_EMAILS: "abdulrehmaan060@gmail.com, oops" })).toEqual([
+      "ADMIN_EMAILS must be email addresses separated by commas.",
+    ])
+    expect(productionEnvProblems({ ...GOOD, PASSWORD_LOGIN_ENABLED: "0" })).toEqual([
+      "PASSWORD_LOGIN_ENABLED=0 needs Sign in with Google set up, or nobody could sign in.",
+    ])
+  })
   it("never prints the database password", () => {
     expect(describeDatabase(GOOD.DATABASE_URL)).toBe("localhost/u123456789_hrm")
     expect(describeDatabase("nonsense")).toBe("(invalid URL)")

@@ -110,6 +110,8 @@ Failed emails also appear in the bell (notifications), in the client's **Reminde
 
 ## 7. Good to know
 
+- **Signing in with Google:** on the sign-in page, press **Sign in with Google** and choose your Google account (abdulrehmaan060@gmail.com). You don't need the 6-digit code from the authenticator app then: your Google account protects the sign-in instead. **So keep 2-Step Verification turned on for your Google account:** go to https://myaccount.google.com/security → **2-Step Verification**. Other Google accounts can't sign in; they just see "Invalid credentials.".
+
 - **Bell icon:** news from the app (new invoices, expiring services, failed emails). Press **Mark all read** when you have seen them.
 - **Search:** the search box at the top finds clients by name, company, email, phone or domain.
 - **Cancelled client?** On the service, press **⋯ → Cancel service**. It gets no more reminders or invoices. You can reactivate it later.

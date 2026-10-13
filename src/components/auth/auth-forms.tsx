@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, type TransitionStartFunction } from "react"
 import Link from "next/link"
 import { AuthHeading } from "@/components/auth-heading"
 import { FormField } from "@/components/form-field"
 import { InlineAlert } from "@/components/inline-alert"
 import { PasswordInput } from "@/components/password-input"
+import { GoogleLogo } from "@/components/auth/google-logo"
 import { OtpInput } from "@/components/auth/otp-input"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,15 +20,71 @@ import {
 const linkClass =
   "inline-flex min-h-11 items-center justify-center text-sm text-brand-700 hover:underline"
 
-export function LoginForm() {
-  const [error, setError] = useState("")
+export function LoginForm({
+  google,
+  passwordLogin,
+  initialError = "",
+}: {
+  /** Sign in with Google is configured (docs/05 §3a). */
+  google: boolean
+  /** Email + password (+ 2FA); can be turned off once Google is set up. */
+  passwordLogin: boolean
+  /** From /login?error=… after Google sent the browser back. */
+  initialError?: string
+}) {
+  const [error, setError] = useState(initialError)
   const [pending, start] = useTransition()
   return (
     <>
       <AuthHeading
         title="Sign in to Renewals"
-        description="Use your admin username or email."
+        description={
+          passwordLogin
+            ? google
+              ? "Use your Google account, or your admin username or email."
+              : "Use your admin username or email."
+            : "Use your Google account."
+        }
       />
+      {google && (
+        <div className="space-y-4">
+          {!passwordLogin && error && <InlineAlert>{error}</InlineAlert>}
+          <Button asChild variant="outline" className="w-full">
+            {/* A full navigation, never <Link>: a prefetch would start the
+                flow (new state cookies) behind the admin's back. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href="/api/auth/google">
+              <GoogleLogo className="size-4" />
+              Sign in with Google
+            </a>
+          </Button>
+        </div>
+      )}
+      {google && passwordLogin && (
+        <div className="my-5 flex items-center gap-3 text-xs text-ink-muted" role="separator">
+          <span className="h-px flex-1 bg-border" />
+          or
+          <span className="h-px flex-1 bg-border" />
+        </div>
+      )}
+      {passwordLogin && <PasswordLoginForm error={error} setError={setError} pending={pending} start={start} />}
+    </>
+  )
+}
+
+function PasswordLoginForm({
+  error,
+  setError,
+  pending,
+  start,
+}: {
+  error: string
+  setError: (e: string) => void
+  pending: boolean
+  start: TransitionStartFunction
+}) {
+  return (
+    <>
       <form
         className="space-y-4"
         onSubmit={(e) => {

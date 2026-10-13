@@ -154,6 +154,15 @@ Owner decision: the database moves from Neon Postgres to Hostinger's MySQL/Maria
 - [x] Lint, unit + integration tests, build and Playwright green against MariaDB 11.8.9 (portable server), with the `mariadb@3.5.4` override.
 - [ ] Confirm the Hostinger MariaDB/MySQL version in phpMyAdmin and set it in `docker-compose.yml`.
 
+## Sign in with Google (13 Oct 2026, docs/05 §3a, docs/11 §2a)
+- [x] "Sign in with Google" on /login (arctic 3.7.0, PKCE + state, scope openid email), allowlist `ADMIN_EMAILS`, verified emails only, letter case ignored.
+- [x] Rejected accounts: the same "Invalid credentials.", logged (`login.google_rejected`) and throttled like passwords; success logs the Google email.
+- [x] Google sign-in skips our 2FA (full session for the single admin); docs/11 and the owner's guide tell the owner to keep Google 2-Step Verification on.
+- [x] Email + password fallback; `PASSWORD_LOGIN_ENABLED=0` turns it off only while Google is configured; `setup:prod` checks the Google variables.
+- [x] Tests: allowlist (allowed, not allowed, unverified, letter case, token checks), the routes (state, cookies, redirects), the DB path (log, throttle).
+- [ ] Google Cloud Console project + OAuth client created by the owner (docs/11 §2a), variables set in hPanel, and both checks of step 6 done on the live site.
+- [ ] 2-Step Verification confirmed on abdulrehmaan060@gmail.com.
+
 ## Payment accounts per currency (13 Oct 2026, docs/13 §6a)
 - [x] Settings → Invoices → Payment accounts: label, bank, account title, account number and/or IBAN, optional SWIFT/BIC and branch code, currencies; one Default.
 - [x] One account per currency: taken currencies greyed out with the reason; the server refuses duplicates too.

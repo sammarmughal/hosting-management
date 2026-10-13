@@ -38,6 +38,10 @@ Set these in hPanel → the Node.js app → **Environment variables** (never upl
 | `CRON_SECRET` | 32+ random characters (`openssl rand -hex 32`). Required: the daily check (§4) sends it |
 | `SESSION_COOKIE_NAME` | e.g. `hrm_session` |
 | `TRUSTED_IP_HEADER` | optional, default `x-forwarded-for` (§7) |
+| `GOOGLE_CLIENT_ID` | optional: the OAuth client ID for **Sign in with Google** (§2a) |
+| `GOOGLE_CLIENT_SECRET` | optional: its client secret (§2a). Secret |
+| `ADMIN_EMAILS` | optional: `abdulrehmaan060@gmail.com`, the only Google account(s) allowed to sign in, comma-separated (§2a) |
+| `PASSWORD_LOGIN_ENABLED` | optional, default `1`. `0` leaves only Sign in with Google (§2a, step 8) |
 
 Do **not** set `FAKE_TODAY`, `SEED_DEMO`, `MAIL_TRANSPORT` or `ALLOW_LOCAL_APP_URL`.
 
@@ -76,6 +80,42 @@ Run once, over SSH (above), before the first deploy goes live:
 
 It never loads demo or seed data: there are no clients, and settings and message templates use their built-in defaults until you save them in the app. Running it again is safe: applied migrations are skipped and an existing admin is left unchanged (`npm run create-admin -- --force` replaces the admin; `npm run reset-2fa` turns 2FA off if the phone is lost).
 
+## 2a. Sign in with Google (Google Cloud Console)
+
+Owner decision (13 Oct 2026): `/login` offers **Sign in with Google**, but only for the addresses in `ADMIN_EMAILS` (to start, just `abdulrehmaan060@gmail.com`, the owner's own Google account). Any other Google account gets the same "Invalid credentials." as a wrong password, and the attempt is logged (`login.google_rejected` in the audit log). Google must report the email as verified. Email + password + our 2FA stays available as a fallback (step 8). How it works: docs/05 §3a.
+
+> **Google sign-in skips our own two-step code. Google's 2-Step Verification protects the account instead, so it must be on.** Before you rely on Google sign-in, open https://myaccount.google.com/security with the owner's Google account → **2-Step Verification** → turn it on (an authenticator app or passkey is better than SMS). Do the same for any address you add to `ADMIN_EMAILS` later. Google doesn't tell the app whether it's on, so the app can't check it for you.
+
+Do this once, signed in to Google **as the owner** (abdulrehmaan060@gmail.com), so the project belongs to the owner's account. Google renames these screens from time to time; look for the matching option if a name differs.
+
+1. **Project.** Open https://console.cloud.google.com → the project picker at the top → **New project** → name `Renewals` → **Create**. Select it in the project picker.
+2. **OAuth consent screen.** It's called **Google Auth Platform** in the newer console (menu → **APIs & Services → OAuth consent screen**). Press **Get started**:
+   - **App information:** App name `Renewals`; User support email: the owner's address.
+   - **Audience:** **External**.
+   - **Contact information:** the owner's address. Agree to the policy → **Create**.
+   - **Branding** (optional): add `abdulrehmaan.net` under **Authorized domains**. No logo is needed; a logo would require Google's review.
+   - **Data access:** add the scopes `openid` and `.../auth/userinfo.email`. Both are non-sensitive, so no Google verification is needed. The app asks for nothing else.
+   - **Audience → Publishing status:** press **Publish app** to move it to **In production**. With only these two scopes there is no review, and no "unverified app" warning. (While it stays in **Testing**, only the **Test users** listed there can sign in, and Google shows a warning screen. The allowlist protects the app either way.)
+3. **OAuth client.** **Clients** (older console: **APIs & Services → Credentials → Create credentials → OAuth client ID**) → **Create client**:
+   - **Application type:** **Web application**. **Name:** `Renewals web`.
+   - **Authorized JavaScript origins:** leave empty. The sign-in runs on the server.
+   - **Authorized redirect URIs:** add both, exactly as written (http for localhost, https for the live site, no trailing slash):
+     ```
+     https://renewals.abdulrehmaan.net/api/auth/google/callback
+     http://localhost:3000/api/auth/google/callback
+     ```
+   - **Create.**
+4. **Copy the Client ID and the Client secret.** The newer console shows the secret **only once**, so copy it now or download the JSON. If it's lost, open the client → **Add secret**, then delete the old one.
+5. **hPanel → the Node.js app → Environment variables:** add `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `ADMIN_EMAILS=abdulrehmaan060@gmail.com`, then **redeploy**. The app builds the redirect URI from `APP_URL`, so `APP_URL` must be exactly `https://renewals.abdulrehmaan.net`.
+6. **Test** in a private window:
+   - Open `/login` → **Sign in with Google** → choose the owner's account. You land on the dashboard **without** our 6-digit code. Settings → Security → Recent logins shows the sign-in.
+   - Sign out → **Sign in with Google** with any other Google account. You get "Invalid credentials.", and the audit log has a `login.google_rejected` row with that address.
+   - If Google shows **Error 400: redirect_uri_mismatch**, the redirect URI in step 3 doesn't exactly match `APP_URL` + `/api/auth/google/callback`. Check https vs http, `www`, and the trailing slash.
+7. **Locally:** set `APP_URL="http://localhost:3000"` in `.env` (plus the same three Google variables), run `npm run dev`, and open http://localhost:3000/login. The localhost redirect URI from step 3 is used.
+8. **Optional: Google only.** Once Google sign-in works on the owner's laptop and phone, set `PASSWORD_LOGIN_ENABLED=0` in hPanel and redeploy. The password form, `/forgot` and password reset are then off. The flag is ignored unless all three Google variables are set, so a typo can't lock everyone out, and `setup:prod` reports the mistake. To bring the password back (e.g. no access to the Google account), set it to `1` and redeploy, then sign in with the password and our 2FA as before.
+
+To add another Google account later, add it to `ADMIN_EMAILS` (comma-separated) and redeploy. To remove one, take it out and redeploy. Sessions already open stay open until they expire; Settings → Security → **Log out all sessions** ends them now.
+
 ## 3. Hostinger Node.js app
 Node.js apps are available on Hostinger **Business web hosting** and **Cloud** plans (not on lower shared plans). A VPS also works.
 
@@ -92,7 +132,7 @@ Node.js apps are available on Hostinger **Business web hosting** and **Cloud** p
    | Entry file / start | `.next/standalone/server.js` (or `npm start`, which runs the same file). The `postbuild` script (`scripts/postbuild.mjs`) copies `public/` and `.next/static/` next to it and removes any `.env` file from the build output. The server listens on `PORT`, which Hostinger sets. |
 5. Add the environment variables from §2, then redeploy.
 6. **Domain:** connect `renewals.abdulrehmaan.net` to the app (hPanel → the app → **Domains**; if `abdulrehmaan.net` is managed in Hostinger, the DNS record is added for you, otherwise add the record hPanel shows at your DNS provider). Turn on the free SSL certificate and **Force HTTPS**.
-7. Test: `https://renewals.abdulrehmaan.net/api/health` returns `{"status":"ok","db":"ok"}`, and login + 2FA works.
+7. Test: `https://renewals.abdulrehmaan.net/api/health` returns `{"status":"ok","db":"ok"}`, login + 2FA works, and Sign in with Google works (§2a, step 6).
 8. **Uptime monitoring (recommended):** add `https://renewals.abdulrehmaan.net/api/health` to a free uptime monitor (e.g. UptimeRobot, every 5 minutes, alert by email). The endpoint needs no login and returns no data: HTTP 200 `{"status":"ok","db":"ok"}` when the app and the database are up, HTTP 503 `{"status":"error","db":"unreachable"}` when the database doesn't answer within 3 seconds. Alert on anything other than 200.
 
 ## 4. Daily check (hPanel Cron Jobs)

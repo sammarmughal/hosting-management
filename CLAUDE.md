@@ -8,7 +8,7 @@ You are helping build **Hosting Renewal Manager**, a single-admin **Next.js** ap
 - The spec file for the area you are touching (`docs/0X-*.md`). **The docs are the source of truth. If code and docs disagree, ask before changing either.**
 
 ## Stack (don't add anything else without asking)
-Next.js App Router · TypeScript strict · Tailwind + shadcn/ui + lucide-react · Prisma + MySQL/MariaDB (Hostinger, @prisma/adapter-mariadb) · zod · react-hook-form · @node-rs/argon2 · otplib · qrcode · nodemailer · papaparse · sonner · Vitest · Playwright.
+Next.js App Router · TypeScript strict · Tailwind + shadcn/ui + lucide-react · Prisma + MySQL/MariaDB (Hostinger, @prisma/adapter-mariadb) · zod · react-hook-form · @node-rs/argon2 · otplib · arctic (Sign in with Google, pinned) · qrcode · nodemailer · papaparse · sonner · Vitest · Playwright.
 
 ## Hard rules
 1. **No background workers and no polling loops.** Reminder checks run only through `runCheck()`: from the dashboard page, `checkNowAction`, and the one **daily scheduled check** (`/api/cron/check`, called with curl by an hPanel cron job at 09:00 PKT, docs/11 §4; added by owner decision on 11 Oct 2026). The route needs `Authorization: Bearer <CRON_SECRET>`. Don't add other scheduled jobs.

@@ -1,6 +1,7 @@
 // Pure checks for `npm run setup:prod` (docs/11 §2): what must be set before
 // a production database is touched. Takes the environment as an argument.
 import { appUrlProblem } from "@/lib/domain/app-url"
+import { authConfig, parseAllowlist } from "@/lib/domain/google-auth"
 
 type Env = Record<string, string | undefined>
 
@@ -25,6 +26,16 @@ export function productionEnvProblems(env: Env): string[] {
     problems.push("CRON_SECRET must be 32+ random characters (openssl rand -hex 32).")
   if (env.ALLOW_LOCAL_APP_URL === "1")
     problems.push("ALLOW_LOCAL_APP_URL must not be set for production.")
+
+  // Sign in with Google (docs/11 §2a): all three or none.
+  const google = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "ADMIN_EMAILS"].filter((k) => env[k]?.trim())
+  if (google.length > 0 && google.length < 3)
+    problems.push("Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and ADMIN_EMAILS together, or none of them.")
+  const listed = (env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim()).filter(Boolean)
+  if (listed.length !== parseAllowlist(env.ADMIN_EMAILS).length)
+    problems.push("ADMIN_EMAILS must be email addresses separated by commas.")
+  if (/^(0|false|off|no)$/i.test(env.PASSWORD_LOGIN_ENABLED?.trim() ?? "") && !authConfig(env).google)
+    problems.push("PASSWORD_LOGIN_ENABLED=0 needs Sign in with Google set up, or nobody could sign in.")
   return problems
 }
 
