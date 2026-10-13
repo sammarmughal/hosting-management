@@ -3,6 +3,7 @@
 // handled as integer thousandths (see money.ts), never JS floats.
 import { addOneYear, formatDatePK, type ISODate } from "@/lib/domain/dates"
 import { fromUnits, MONEY_SCALE, toUnits } from "@/lib/domain/money"
+import type { PaymentSnapshot } from "@/lib/domain/payment-accounts"
 
 /* Numbering (docs/13 §3) --------------------------------------------- */
 
@@ -166,12 +167,11 @@ export interface SellerSnapshot {
   ntn: string
   /** data:image/png;base64,… or "" */
   logo: string
-  payment: {
-    bankName: string
-    accountTitle: string
-    accountNumber: string
-    wallet: string
-  }
+  /**
+   * The payment account chosen by the invoice's currency when it was created
+   * or last refreshed (paymentRows() also reads the older flat shape).
+   */
+  payment: PaymentSnapshot
   footer: string
 }
 
@@ -183,7 +183,3 @@ export interface BillToSnapshot {
   phone: string | null
   address: string | null
 }
-
-/** True when the snapshot has any payment instructions worth printing. */
-export const hasPaymentInstructions = (s: SellerSnapshot) =>
-  Object.values(s.payment).some((v) => v.trim() !== "")

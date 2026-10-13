@@ -257,6 +257,7 @@ export function SettingsPanel({
               initial={initial.invoices}
               invoiceCount={invoiceCount}
               year={Number(today.slice(0, 4))}
+              currencies={initial.business.enabledCurrencies}
             />
           </div>
         )}

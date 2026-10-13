@@ -60,6 +60,8 @@ To send an invoice:
 
 The client can open the link on their phone without logging in, see the invoice and download the PDF.
 
+**Which bank details are on the invoice?** It depends on the invoice's currency. In **Settings → Invoices → Payment accounts**, each bank account lists the currencies it's for, for example PKR on the Pakistan account and AED on the UAE account. The account marked **Default** is used for every other currency. If you change your bank details later, press **Refresh business details** on an unpaid invoice to update it. Paid invoices never change.
+
 ---
 
 ## 4. Marking an invoice as paid

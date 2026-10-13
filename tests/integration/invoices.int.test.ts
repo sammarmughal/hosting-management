@@ -22,6 +22,7 @@ import { renewService } from "@/lib/server/renewals"
 import { updateSettings } from "@/lib/server/settings"
 import { SETTING_DEFAULTS } from "@/lib/server/settings-keys"
 
+import { AE_ACCOUNT, FAKE_IBAN, PK_ACCOUNT, TEST_ACCOUNTS } from "../helpers/payment-fixtures"
 import { resetDb } from "../helpers/reset-db"
 
 const TODAY = "2026-10-10"
@@ -36,8 +37,7 @@ async function reset() {
     business_name: "Rehman Web Services",
     mail_from_email: "billing@rehmanweb.pk",
     business_address: "Office 12, Blue Area, Islamabad",
-    pay_bank_name: "Meezan Bank",
-    pay_account_number: "PK36MEZN0001234567890123",
+    payment_accounts: JSON.stringify(TEST_ACCOUNTS),
   })
   devOutbox().length = 0
   process.env.FAKE_TODAY = TODAY
@@ -163,7 +163,7 @@ describe.skipIf(!enabled)("invoices (docs/13 §2–§5)", () => {
     if ("error" in res) throw new Error(res.error)
     let inv = await getInvoice(res.id)
     expect(inv?.seller.businessName).toBe("Rehman Web Services")
-    expect(inv?.seller.payment.bankName).toBe("Meezan Bank")
+    expect(inv?.seller.payment.account?.bankName).toBe("Example Bank Pakistan")
     expect(inv?.billTo).toMatchObject({
       name: "Client d10",
       company: "Noor Dental Clinic",
@@ -196,6 +196,70 @@ describe.skipIf(!enabled)("invoices (docs/13 §2–§5)", () => {
     // Manual create again is idempotent.
     const again = await createInvoiceNow(s.id)
     expect(again).toMatchObject({ id: res.id, created: false })
+  })
+
+  it("snapshots the payment account for the invoice's currency, else the Default (§11)", async () => {
+    await updateSettings({ pay_wallet: "0300 0000000" })
+    const pkr = await service(10)
+    const aed = await service(11, { currency: "AED", amount: "500" })
+    const usd = await service(12, { currency: "USD", amount: "49.99" })
+    const ids = []
+    for (const s of [pkr, aed, usd]) {
+      const r = await createInvoiceNow(s.id)
+      if ("error" in r) throw new Error(r.error)
+      ids.push(r.id)
+    }
+    const [a, b, c] = await Promise.all(ids.map((id) => getInvoice(id)))
+    expect(a?.seller.payment.account).toMatchObject({ label: "Pakistan account", iban: FAKE_IBAN.PK })
+    expect(b?.seller.payment.account).toMatchObject({ label: "UAE account", iban: FAKE_IBAN.AE })
+    // USD isn't assigned to an account: the Default (Pakistan) is used.
+    expect(c?.seller.payment.account?.label).toBe("Pakistan account")
+    // The JazzCash / Easypaisa number only on the PKR invoice.
+    expect([a, b, c].map((i) => i?.seller.payment.wallet)).toEqual(["0300 0000000", "", ""])
+  })
+
+  it("Refresh business details picks the account again; paid invoices keep theirs (§11)", async () => {
+    const open = await service(10, { currency: "AED", amount: "500" })
+    const paid = await service(11, { currency: "AED", amount: "500" })
+    const o = await createInvoiceNow(open.id)
+    const p = await createInvoiceNow(paid.id)
+    if ("error" in o || "error" in p) throw new Error("create failed")
+    await renewService({ serviceId: paid.id, amount: "500", paidOn: TODAY, method: "Bank transfer", extendFrom: "renewal" })
+
+    // New UAE bank details; AED moves nowhere else.
+    const newUae = { ...AE_ACCOUNT, bankName: "Example Bank UAE 2", iban: FAKE_IBAN.GB, swift: "" }
+    await updateSettings({ payment_accounts: JSON.stringify([PK_ACCOUNT, newUae]) })
+    // Unchanged until refreshed.
+    expect((await getInvoice(o.id))?.seller.payment.account?.bankName).toBe("Example Bank UAE")
+    expect((await refreshBusinessDetails(o.id)).ok).toBe(true)
+    expect((await getInvoice(o.id))?.seller.payment.account).toMatchObject({
+      bankName: "Example Bank UAE 2",
+      iban: FAKE_IBAN.GB,
+      swift: "",
+    })
+
+    // Paid: locked, still the old account.
+    expect((await refreshBusinessDetails(p.id)).ok).toBe(false)
+    expect((await getInvoice(p.id))?.seller.payment.account?.bankName).toBe("Example Bank UAE")
+
+    // AED taken off its account: a refresh falls back to the Default.
+    await updateSettings({ payment_accounts: JSON.stringify([PK_ACCOUNT, { ...newUae, currencies: [] }]) })
+    expect((await refreshBusinessDetails(o.id)).ok).toBe(true)
+    expect((await getInvoice(o.id))?.seller.payment.account?.label).toBe("Pakistan account")
+  })
+
+  it("Update from service switches the account when the currency changes", async () => {
+    const s = await service(10)
+    const r = await createInvoiceNow(s.id)
+    if ("error" in r) throw new Error(r.error)
+    expect((await getInvoice(r.id))?.seller.payment.account?.label).toBe("Pakistan account")
+    await prisma.service.update({ where: { id: s.id }, data: { currency: "AED", chargeAmount: "500" } })
+    expect((await updateFromService(r.id)).ok).toBe(true)
+    const inv = await getInvoice(r.id)
+    expect(inv?.currency).toBe("AED")
+    expect(inv?.seller.payment.account?.label).toBe("UAE account")
+    // The rest of the business snapshot is untouched.
+    expect(inv?.seller.businessName).toBe("Rehman Web Services")
   })
 
   it("rounds tax to each currency's minor unit: USD cents, KWD fils (§6)", async () => {

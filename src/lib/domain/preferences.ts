@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { DEFAULT_TEMPLATES, type TemplateKey } from "@/lib/domain/default-templates"
 import { currencySchema, DEFAULT_ENABLED_CURRENCIES } from "@/lib/domain/currency"
+import { paymentAccountsSchema } from "@/lib/domain/payment-accounts"
 import { normalisePhone } from "@/lib/domain/whatsapp"
 
 const phone = z
@@ -85,9 +86,9 @@ export const invoiceSettingsSchema = z
       .refine((v) => v === "" || LOGO_RE.test(v), "Upload a PNG or JPEG logo"),
     address: optional(300),
     ntn: optional(30),
-    bankName: optional(100),
-    accountTitle: optional(100),
-    accountNumber: optional(100),
+    /** Bank details per currency; one is the Default (payment-accounts.ts). */
+    accounts: paymentAccountsSchema,
+    /** JazzCash / Easypaisa number, printed on every invoice when set. */
     wallet: optional(100),
     footer: optional(500),
     taxEnabled: z.boolean(),
@@ -147,9 +148,7 @@ export const INITIAL_PREFERENCES: Preferences = {
     logo: "",
     address: "",
     ntn: "",
-    bankName: "",
-    accountTitle: "",
-    accountNumber: "",
+    accounts: [],
     wallet: "",
     footer: "Please pay before the due date to avoid service interruption.",
     taxEnabled: false,

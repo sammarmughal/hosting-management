@@ -4,6 +4,7 @@ import * as React from "react"
 import { ImageIcon, Trash2Icon, UploadIcon } from "lucide-react"
 
 import { FormField } from "@/components/form-field"
+import { PaymentAccountsEditor } from "@/components/settings/payment-accounts"
 import {
   SettingInput,
   SettingsSection,
@@ -28,11 +29,14 @@ export function InvoiceSettingsForm({
   initial,
   invoiceCount,
   year,
+  currencies,
 }: {
   initial: InvoiceSettings
   /** The next number can only be set before the first invoice exists. */
   invoiceCount: number
   year: number
+  /** Enabled currencies, offered on the payment accounts. */
+  currencies: string[]
 }) {
   return (
     <>
@@ -46,7 +50,15 @@ export function InvoiceSettingsForm({
           return r.success ? undefined : r.error.issues[0]?.message
         }}
       >
-        {(draft, update) => <InvoiceFields draft={draft} update={update} locked={invoiceCount > 0} year={year} />}
+        {(draft, update) => (
+          <InvoiceFields
+            draft={draft}
+            update={update}
+            locked={invoiceCount > 0}
+            year={year}
+            currencies={currencies}
+          />
+        )}
       </SettingsSection>
     </>
   )
@@ -57,11 +69,13 @@ function InvoiceFields({
   update,
   locked,
   year,
+  currencies,
 }: {
   draft: InvoiceSettings
   update: (patch: Partial<InvoiceSettings>) => void
   locked: boolean
   year: number
+  currencies: string[]
 }) {
   const preset = (LEAD_DAY_CHOICES as readonly number[]).includes(draft.leadDays)
   const [custom, setCustom] = React.useState(!preset)
@@ -213,15 +227,19 @@ function InvoiceFields({
         onChange={(ntn) => update({ ntn })}
       />
 
-      <fieldset className="grid gap-4 rounded-md border border-border p-4">
-        <legend className="px-1 text-sm font-medium">Payment instructions</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <SettingInput id="pay-bank" label="Bank name" required={false} value={draft.bankName} onChange={(bankName) => update({ bankName })} />
-          <SettingInput id="pay-title" label="Account title" required={false} value={draft.accountTitle} onChange={(accountTitle) => update({ accountTitle })} />
-          <SettingInput id="pay-number" label="Account number / IBAN" required={false} value={draft.accountNumber} onChange={(accountNumber) => update({ accountNumber })} />
-          <SettingInput id="pay-wallet" label="JazzCash / Easypaisa number" required={false} value={draft.wallet} onChange={(wallet) => update({ wallet })} />
-        </div>
-      </fieldset>
+      <PaymentAccountsEditor
+        accounts={draft.accounts}
+        currencies={currencies}
+        onChange={(accounts) => update({ accounts })}
+      />
+      <SettingInput
+        id="pay-wallet"
+        label="JazzCash / Easypaisa number"
+        required={false}
+        help="Optional. Printed on PKR invoices only: JazzCash and Easypaisa take rupees."
+        value={draft.wallet}
+        onChange={(wallet) => update({ wallet })}
+      />
 
       <FormField id="invoice-footer" label="Footer note">
         <Textarea

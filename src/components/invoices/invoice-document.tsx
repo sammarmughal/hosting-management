@@ -1,7 +1,7 @@
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
 import { formatDatePK } from "@/lib/domain/dates"
-import { hasPaymentInstructions } from "@/lib/domain/invoices"
 import { formatAmount, formatMoney, toUnits } from "@/lib/domain/money"
+import { paymentRows } from "@/lib/domain/payment-accounts"
 import { formatPhone } from "@/lib/domain/whatsapp"
 import { cn } from "@/lib/utils"
 import type { InvoiceDocumentData } from "@/types/view"
@@ -22,7 +22,8 @@ export function InvoiceDocument({
   const b = inv.billTo
   const hasDiscount = toUnits(inv.discount) > 0n
   const hasTax = toUnits(inv.taxAmount) > 0n
-  const payment = hasPaymentInstructions(s)
+  // The account chosen by the invoice's currency; only filled fields.
+  const payRows = paymentRows(s.payment)
 
   return (
     <article
@@ -130,7 +131,7 @@ export function InvoiceDocument({
       </section>
 
       {/* 5. Payment instructions */}
-      {payment && (
+      {payRows.length > 0 && (
         <section
           aria-label="Payment instructions"
           className="mt-8 rounded-md border border-border bg-surface-subtle px-4 py-3 text-sm"
@@ -138,21 +139,12 @@ export function InvoiceDocument({
           <h3 className="font-medium">Payment instructions</h3>
           {/* Stacked on phones so account numbers never break mid-word. */}
           <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-0.5 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-y-1">
-            {(
-              [
-                ["Bank", s.payment.bankName],
-                ["Account title", s.payment.accountTitle],
-                ["Account / IBAN", s.payment.accountNumber],
-                ["JazzCash / Easypaisa", s.payment.wallet],
-              ] as const
-            )
-              .filter(([, v]) => v.trim() !== "")
-              .map(([label, value]) => (
-                <div key={label} className="contents">
-                  <dt className="text-ink-muted max-sm:mt-1.5 max-sm:text-xs">{label}</dt>
-                  <dd className="font-mono wrap-break-word">{value}</dd>
-                </div>
-              ))}
+            {payRows.map(({ label, value }) => (
+              <div key={label} className="contents">
+                <dt className="text-ink-muted max-sm:mt-1.5 max-sm:text-xs">{label}</dt>
+                <dd className="font-mono wrap-break-word">{value}</dd>
+              </div>
+            ))}
           </dl>
         </section>
       )}

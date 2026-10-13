@@ -14,8 +14,9 @@ import {
 } from "@react-pdf/renderer"
 
 import { formatDatePK } from "@/lib/domain/dates"
-import { hasPaymentInstructions, INVOICE_STATUS_LABEL } from "@/lib/domain/invoices"
+import { INVOICE_STATUS_LABEL } from "@/lib/domain/invoices"
 import { formatAmount, formatMoney, toUnits } from "@/lib/domain/money"
+import { paymentRows } from "@/lib/domain/payment-accounts"
 import { formatPhone } from "@/lib/domain/whatsapp"
 import type { InvoiceDocumentData } from "@/types/view"
 
@@ -171,14 +172,8 @@ export function InvoicePdf({ invoice: inv }: { invoice: InvoiceDocumentData }) {
   const bill = inv.billTo
   const hasDiscount = toUnits(inv.discount) > 0n
   const hasTax = toUnits(inv.taxAmount) > 0n
-  const payRows = (
-    [
-      ["Bank", seller.payment.bankName],
-      ["Account title", seller.payment.accountTitle],
-      ["Account / IBAN", seller.payment.accountNumber],
-      ["JazzCash / Easypaisa", seller.payment.wallet],
-    ] as const
-  ).filter(([, v]) => v.trim() !== "")
+  // The account chosen by the invoice's currency; only filled fields.
+  const payRows = paymentRows(seller.payment)
 
   return (
     <Document
@@ -281,10 +276,10 @@ export function InvoicePdf({ invoice: inv }: { invoice: InvoiceDocumentData }) {
         </View>
 
         {/* 5. Payment instructions */}
-        {hasPaymentInstructions(seller) ? (
+        {payRows.length > 0 ? (
           <View style={s.pay} wrap={false}>
             <Text style={s.payTitle}>Payment instructions</Text>
-            {payRows.map(([label, value]) => (
+            {payRows.map(({ label, value }) => (
               <View key={label} style={s.payRow}>
                 <Text style={s.payLabel}>{label}</Text>
                 <Text style={s.payValue}>{value}</Text>

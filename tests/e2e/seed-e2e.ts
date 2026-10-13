@@ -11,6 +11,7 @@ import { mariadbConfig } from "@/lib/db-config"
 import { DEFAULT_TEMPLATES } from "@/lib/domain/default-templates"
 import { SETTING_DEFAULTS } from "@/lib/server/settings-keys"
 
+import { TEST_ACCOUNTS } from "../helpers/payment-fixtures"
 import { resetDb } from "../helpers/reset-db"
 import { E2E } from "./e2e-config"
 
@@ -46,8 +47,8 @@ async function main() {
       smtp_password_enc: encrypt("e2e-smtp-password", appKey),
       mail_from_email: "billing@rehmanweb.pk",
       mail_from_name: "Rehman Web Services",
-      pay_bank_name: "Meezan Bank",
-      pay_account_number: "PK36 MEZN 0001 2345 6789 0123",
+      // Made-up accounts: Pakistan (Default, PKR) and UAE (AED).
+      payment_accounts: JSON.stringify(TEST_ACCOUNTS),
     }
     for (const [key, value] of Object.entries(settings))
       await prisma.setting.create({ data: { key, value } })

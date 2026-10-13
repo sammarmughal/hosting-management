@@ -40,9 +40,10 @@ export const SETTING_DEFAULTS = {
   business_address: "",
   invoice_ntn: "",
   invoice_logo: "",
-  pay_bank_name: "",
-  pay_account_title: "",
-  pay_account_number: "",
+  // Bank details per currency, a JSON array (lib/domain/payment-accounts.ts).
+  // Replaced pay_bank_name / pay_account_title / pay_account_number; the
+  // migration moved those into one account marked Default.
+  payment_accounts: "[]",
   pay_wallet: "",
   invoice_footer: "Please pay before the due date to avoid service interruption.",
   tax_enabled: "0",

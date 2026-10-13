@@ -1,9 +1,10 @@
 import "server-only"
 
 import { daysLeft } from "@/lib/domain/dates"
-import { invoiceFilename } from "@/lib/domain/invoices"
+import { invoiceFilename, type SellerSnapshot } from "@/lib/domain/invoices"
 import { invoiceEmail, invoiceWhatsappText, oneLine, wrapEmail } from "@/lib/domain/messages"
 import { MONEY_SCALE } from "@/lib/domain/money"
+import { paymentRows } from "@/lib/domain/payment-accounts"
 import { escapeHtml } from "@/lib/domain/templates"
 import { normalisePhone } from "@/lib/domain/whatsapp"
 import { audit } from "@/lib/server/audit"
@@ -46,6 +47,8 @@ export async function buildShareData(invoiceId: number): Promise<ShareData | nul
     total: inv.total.toFixed(MONEY_SCALE),
     currency: inv.currency,
     dueDate: fromDbDate(inv.dueDate),
+    // The account the invoice itself carries, so the email matches its PDF.
+    payment: paymentRows((inv.seller as unknown as SellerSnapshot | null)?.payment),
   }
   const email = inv.service.client.email
   const phone = normalisePhone(inv.service.client.phone)

@@ -87,6 +87,13 @@ test("invoice lifecycle: check → invoice → email with PDF → public link �
   const res = await pub.goto(link)
   expect(res?.headers()["x-robots-tag"]).toContain("noindex")
   await expect(pub.getByText(invoiceNumber)).toBeVisible()
+  // A PKR invoice: the Pakistan (Default) account, not the UAE one.
+  const payment = pub.getByRole("region", { name: "Payment instructions" })
+  await expect(payment.getByText("PK11 TEST 0000 0012 3456 7890")).toBeVisible()
+  await expect(payment.getByText("Example Bank Pakistan")).toBeVisible()
+  await expect(payment.getByText("Example Bank UAE")).toHaveCount(0)
+  await expect(payment.getByText("SWIFT/BIC")).toHaveCount(0)
+  expect(mail.data.replace(/=\r?\n/g, "")).toContain("IBAN: PK11 TEST 0000 0012 3456 7890")
   const overflow = await pub.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
   expect(overflow).toBe(0)
 

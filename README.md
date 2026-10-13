@@ -120,7 +120,8 @@ The password is stored encrypted and never shown again (leave the field empty to
 
 - **Number prefix** (default `INV`) → numbers like `INV-2026-0012`, a new sequence each year. The **next number** can be set until the first invoice exists.
 - **Create invoices** 15 or 30 days (default) before the renewal date, or a custom number of days. The check creates one invoice per active service per renewal; cancelled services never get one. "Create invoice now" on a service card works any time.
-- **Logo** (optional, PNG or JPEG under 200 KB; without one the business name and tagline are shown as a text wordmark on the invoice, PDF, public page and emails, and the sidebar shows the business initials), **business address**, **NTN**, **payment instructions** (bank, account title, account number / IBAN, JazzCash / Easypaisa) and the **footer note**: printed on the invoice and the PDF.
+- **Logo** (optional, PNG or JPEG under 200 KB; without one the business name and tagline are shown as a text wordmark on the invoice, PDF, public page and emails, and the sidebar shows the business initials), **business address**, **NTN**, and the **footer note**: printed on the invoice and the PDF.
+- **Payment accounts**: one per bank account, with label, bank, account title, account number and/or IBAN (validated), optional SWIFT/BIC and branch code, and the currencies it is used for. Each currency can be on only one account, and the **Default** account covers every other currency. An invoice prints the account for its currency (the PDF, public page and email show only the filled fields). The JazzCash / Easypaisa number is printed on PKR invoices only (docs/13 §6a).
 - **Tax** on/off and rate, applied after any discount.
 
 Invoices keep a copy of these details from the moment they're created, so later changes don't alter old invoices. Fill in Settings → Invoices **before** the first check that creates invoices.

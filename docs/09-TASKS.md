@@ -154,6 +154,16 @@ Owner decision: the database moves from Neon Postgres to Hostinger's MySQL/Maria
 - [x] Lint, unit + integration tests, build and Playwright green against MariaDB 11.8.9 (portable server), with the `mariadb@3.5.4` override.
 - [ ] Confirm the Hostinger MariaDB/MySQL version in phpMyAdmin and set it in `docker-compose.yml`.
 
+## Payment accounts per currency (13 Oct 2026, docs/13 §6a)
+- [x] Settings → Invoices → Payment accounts: label, bank, account title, account number and/or IBAN, optional SWIFT/BIC and branch code, currencies; one Default.
+- [x] One account per currency: taken currencies greyed out with the reason; the server refuses duplicates too.
+- [x] IBAN validation (registry length per country + mod-97) with plain-language errors; SWIFT/BIC format.
+- [x] Seller snapshot keeps the account for the invoice's currency (else the Default); Refresh business details re-picks it on unpaid invoices; paid stay locked; Update from service re-picks it when the currency changes.
+- [x] PDF, public page and invoice email print only the filled fields; `{{payment_details}}` placeholder; JazzCash / Easypaisa on PKR invoices only.
+- [x] Migration `payment_accounts`: the old bank details → one Default account.
+- [x] Tests: currency → account, Default fallback, duplicates, IBAN validation, snapshot/refresh/lock, migration, email, e2e settings form. Only made-up IBANs (bank code TEST / 000).
+- [x] PKR and AED invoice PDFs rendered and checked.
+
 ---
 
 ## Phase 10 — Deploy + handover

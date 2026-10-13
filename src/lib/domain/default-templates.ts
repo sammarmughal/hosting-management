@@ -93,6 +93,7 @@ Open the dashboard to follow up.`,
     body: `<p>Dear {client_name},</p>
 <p>Please find attached invoice <b>{{invoice_number}}</b> for the hosting renewal of <b>{domain}</b>.</p>
 <p>Amount due: <b>{{invoice_total}}</b><br>Due date: <b>{{due_date}}</b></p>
+{{payment_details}}
 <p>You can also view and download it online: <a href="{{invoice_link}}">{{invoice_link}}</a></p>
 <p>Regards,<br>{business_name}<br>{business_phone}</p>`,
   },

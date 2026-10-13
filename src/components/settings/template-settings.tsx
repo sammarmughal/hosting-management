@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { DEFAULT_TEMPLATES, type TemplateKey } from "@/lib/domain/default-templates"
 import { renderForDays, daysText } from "@/lib/domain/templates"
 import { addDays, formatDatePK } from "@/lib/domain/dates"
+import { paymentDetailsHtml, paymentDetailsText } from "@/lib/domain/messages"
 import type {
   TemplateSettings,
   BusinessSettings,
@@ -24,9 +25,22 @@ const names: Record<TemplateKey, string> = {
 }
 
 /** docs/13 §10 writes these with double braces; the renderer accepts both forms. */
-const INVOICE_PLACEHOLDERS = ["invoice_number", "invoice_link", "invoice_total", "due_date"]
+const INVOICE_PLACEHOLDERS = [
+  "invoice_number",
+  "invoice_link",
+  "invoice_total",
+  "due_date",
+  "payment_details",
+]
 const placeholderToken = (key: string) =>
   INVOICE_PLACEHOLDERS.includes(key) ? `{{${key}}}` : `{${key}}`
+
+/** Preview only: an obviously made-up account. */
+const SAMPLE_PAYMENT = [
+  { label: "Bank", value: "Example Bank" },
+  { label: "Account title", value: "Your Business Name" },
+  { label: "IBAN", value: "PK11 TEST 0000 0012 3456 7890" },
+]
 
 export function TemplateSettingsForms({
   initial,
@@ -106,6 +120,7 @@ function TemplateFields({
     invoice_link: "https://renewals.rehmanweb.pk/i/Xb3…",
     invoice_total: `${business.defaultCurrency} 6,500`,
     due_date: formatDatePK(addDays(today, days)),
+    payment_details: email ? paymentDetailsHtml(SAMPLE_PAYMENT) : paymentDetailsText(SAMPLE_PAYMENT),
   }
   const placeholders = templateKey.startsWith("admin")
     ? ["today", "count", email ? "summary_table" : "summary_list"]
@@ -118,7 +133,10 @@ function TemplateFields({
         "currency",
         "business_name",
         "business_phone",
-        ...INVOICE_PLACEHOLDERS,
+        // Payment details come from the invoice's snapshot: invoice templates only.
+        ...INVOICE_PLACEHOLDERS.filter(
+          (k) => k !== "payment_details" || templateKey.startsWith("invoice")
+        ),
       ]
   function insert(key: string) {
     const field = active.current
@@ -134,6 +152,7 @@ function TemplateFields({
   }
   const rendered = renderForDays(draft.body, days, vars, {
     mode: email ? "html" : "text",
+    raw: ["summary_table", "payment_details"],
   })
   return (
     <>

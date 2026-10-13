@@ -3,6 +3,7 @@
 // WhatsApp links built on the server, and the tests.
 import { formatDatePK, type ISODate } from "@/lib/domain/dates"
 import { formatAmount, formatMoney, totalsByCurrency } from "@/lib/domain/money"
+import { paymentText, type PaymentRow } from "@/lib/domain/payment-accounts"
 import {
   daysText,
   escapeHtml,
@@ -46,10 +47,24 @@ export interface MessageInvoice {
   total: string
   currency: string
   dueDate: ISODate
+  /** The invoice's payment account lines (paymentRows of its snapshot). */
+  payment?: readonly PaymentRow[]
 }
 
 /** Names and subjects must never carry header line breaks (docs/05 §6). */
 export const oneLine = (s: string) => s.replace(/[\r\n]+/g, " ").trim()
+
+/** "Payment details" and the invoice's account lines, as text; "" without an account. */
+export function paymentDetailsText(rows: readonly PaymentRow[] | undefined) {
+  return rows?.length ? `Payment details\n${paymentText(rows)}` : ""
+}
+
+/** The same as one HTML paragraph (values escaped); "" without an account. */
+export function paymentDetailsHtml(rows: readonly PaymentRow[] | undefined) {
+  if (!rows?.length) return ""
+  const lines = rows.map((r) => `${escapeHtml(r.label)}: ${escapeHtml(r.value)}`)
+  return `<p><b>Payment details</b><br>${lines.join("<br>")}</p>`
+}
 
 function invoiceVars(inv?: MessageInvoice | null) {
   return {
@@ -57,10 +72,12 @@ function invoiceVars(inv?: MessageInvoice | null) {
     invoice_link: inv?.link ?? "",
     invoice_total: inv ? formatMoney(inv.total, inv.currency) : "",
     due_date: inv ? formatDatePK(inv.dueDate) : "",
+    payment_details: paymentDetailsText(inv?.payment),
   }
 }
 
 const mentionsLink = (template: string) => /\{\{?invoice_link\}?\}/.test(template)
+const mentionsPayment = (template: string) => /\{\{?payment_details\}?\}/.test(template)
 
 export function clientVars(
   s: MessageService,
@@ -123,7 +140,11 @@ export function clientEmail(
   return { subject, html: wrapEmail(body, b), text: htmlToText(body) }
 }
 
-/** The "Invoice" template (docs/13 §10), for Share invoice. */
+/**
+ * The "Invoice" template (docs/13 §10), for Share invoice. The payment
+ * account for the invoice's currency goes where {{payment_details}} is, or
+ * at the end when an edited template leaves it out.
+ */
 export function invoiceEmail(
   t: Template,
   s: MessageService,
@@ -131,9 +152,14 @@ export function invoiceEmail(
   today: ISODate,
   invoice: MessageInvoice
 ) {
-  const vars = clientVars(s, b, today, invoice)
+  const payment = paymentDetailsHtml(invoice.payment)
+  const vars = { ...clientVars(s, b, today, invoice), payment_details: payment }
   const subject = oneLine(renderTemplate(pickSection(t.subject ?? "", s.daysLeft), vars, { mode: "text" }))
-  const body = renderForDays(t.body, s.daysLeft, vars, { mode: "html" })
+  let body = renderForDays(t.body, s.daysLeft, vars, {
+    mode: "html",
+    raw: ["summary_table", "payment_details"],
+  })
+  if (payment && !mentionsPayment(t.body)) body += `\n${payment}`
   return { subject, body, html: wrapEmail(body, b), text: htmlToText(body) }
 }
 

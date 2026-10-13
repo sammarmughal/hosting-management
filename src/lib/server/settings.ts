@@ -10,6 +10,8 @@ import type {
   Preferences,
   ReminderSettings,
 } from "@/lib/domain/preferences"
+import { formatIban } from "@/lib/domain/iban"
+import { parsePaymentAccounts, type PaymentAccount } from "@/lib/domain/payment-accounts"
 import { parseStages } from "@/lib/domain/stages"
 import {
   FALLBACK_CURRENCY,
@@ -58,9 +60,8 @@ export interface AppSettings {
     address: string
     ntn: string
     logo: string
-    bankName: string
-    accountTitle: string
-    accountNumber: string
+    /** Bank details per currency (payment-accounts.ts). */
+    accounts: PaymentAccount[]
     wallet: string
     footer: string
     taxEnabled: boolean
@@ -126,9 +127,7 @@ export const getAppSettings = cache(async (): Promise<AppSettings> => {
       address: get("business_address"),
       ntn: get("invoice_ntn"),
       logo: get("invoice_logo"),
-      bankName: get("pay_bank_name"),
-      accountTitle: get("pay_account_title"),
-      accountNumber: get("pay_account_number"),
+      accounts: parsePaymentAccounts(get("payment_accounts")),
       wallet: get("pay_wallet"),
       footer: get("invoice_footer"),
       taxEnabled: get("tax_enabled") === "1",
@@ -194,9 +193,8 @@ export async function getPreferences(): Promise<Preferences> {
     logo: s.invoices.logo,
     address: s.invoices.address,
     ntn: s.invoices.ntn,
-    bankName: s.invoices.bankName,
-    accountTitle: s.invoices.accountTitle,
-    accountNumber: s.invoices.accountNumber,
+    // Stored without spaces; the form shows groups of four (the save strips them).
+    accounts: s.invoices.accounts.map((a) => ({ ...a, iban: a.iban ? formatIban(a.iban) : "" })),
     wallet: s.invoices.wallet,
     footer: s.invoices.footer,
     taxEnabled: s.invoices.taxEnabled,

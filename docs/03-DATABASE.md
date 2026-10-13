@@ -425,6 +425,10 @@ model RateLimit {
 | `smtp_password_enc` | `` |
 | `mail_from_email` | `` |
 | `mail_from_name` | `Our Hosting` |
+| `payment_accounts` | `[]`: JSON array of payment accounts (label, bank, title, account number, IBAN, SWIFT/BIC, branch code, currencies, isDefault), docs/13 §6a |
+| `pay_wallet` | `` (JazzCash / Easypaisa number, printed on PKR invoices) |
+
+The invoice settings (`invoice_prefix`, `invoice_lead_days`, `business_address`, `invoice_ntn`, `invoice_logo`, `invoice_footer`, `tax_enabled`, `tax_rate`) are listed with their defaults in `src/lib/server/settings-keys.ts`.
 
 `lib/server/settings.ts` exposes a typed `getSettings()` (parsed numbers and booleans, cached per request with React `cache()`), plus `updateSettings(partial)`.
 

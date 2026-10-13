@@ -34,7 +34,7 @@ A `wa.me` link can only open WhatsApp with **pre-filled text**. It cannot attach
 - `subtotal`, `discount` (default 0), `taxRate` (default 0), `taxAmount`, `total` (store money the same way `lib/domain/money.ts` does; never floats)
 - `status`: `issued` | `sent` | `paid` | `void`. **Overdue is derived** (dueDate passed and not paid), never stored.
 - `billTo` (JSON snapshot of client name, company, email, phone, address at issue time)
-- `seller` (JSON snapshot of business details at issue time), so editing settings later never changes old invoices
+- `seller` (JSON snapshot of business details at issue time, including the **payment account chosen by the invoice's currency**, §6a), so editing settings later never changes old invoices. "Refresh business details" re-copies it, account included, on unpaid invoices; paid and void invoices stay locked.
 - `notes`
 - `publicToken` (32 random bytes as 64 lowercase hex characters, so the case-insensitive collation can't make two tokens equal; the lookup also compares exactly), `publicTokenRevokedAt`
 - `firstSentAt`, `paidAt`, `paymentId`, `voidedAt`, `createdAt`, `updatedAt`
@@ -91,6 +91,34 @@ Confirmed with the client on 11 Oct 2026: **no conversion. Each client has their
 
 **Existing data:** migration `client_currency_and_money_scale` gave every client the currency most of their services use (ties go to the app default, then alphabetical), or the app default when they have no services.
 
+## 6a. Payment accounts
+
+Owner request (13 Oct 2026): **payment details depend on the invoice currency.** A PKR invoice shows the Pakistani bank account, an AED invoice the UAE one. Settings → Invoices → **Payment accounts** replaces the single set of bank details.
+
+**Each account has**
+- **Label**, e.g. "Pakistan account". It is for the owner only and isn't printed.
+- **Bank name** and **account title**.
+- **Account number** and **IBAN**: at least one of the two (some countries have no IBAN).
+- **SWIFT/BIC** and **branch code**, both optional.
+- **Currencies** it is used for.
+
+**Rules** (`lib/domain/payment-accounts.ts`, checked in the form and again by the server)
+- One account is marked **Default**. It is used for any currency not assigned to another account, so a USD invoice with no USD account shows the Default.
+- A currency can belong to **only one account**. In the form, a currency that's already on another account is greyed out with "on Pakistan account". The help line explains why: each invoice must know which bank details to print. The server refuses a duplicate with the same reason.
+- **IBANs are validated** (`lib/domain/iban.ts`): country code, the registry length for that country, and the mod-97 check digits. The error says what's wrong, e.g. "A PK IBAN has 24 characters; this one has 23." or "This IBAN's check digits don't match. Look for a typo." IBANs are stored without spaces and printed in groups of four.
+- **SWIFT/BIC** must be 8 or 11 letters and digits.
+- Labels must be different. There are at most 10 accounts.
+- Stored as JSON in the `payment_accounts` setting.
+
+**On invoices**
+- The account is chosen when the invoice is created: the one the invoice's currency is assigned to, else the Default, else none. It is stored in the seller snapshot.
+- "Refresh business details" (unpaid invoices only) chooses it again from the current settings. "Update from service" chooses it again only if the currency changed.
+- The PDF, the public page and the invoice email print **only the chosen account's filled fields**, with no empty rows and no label. They print nothing when there's no account.
+- The invoice email has a `{{payment_details}}` placeholder. When an edited template leaves it out, the details are added at the end.
+- The **JazzCash / Easypaisa** number stays a single setting outside the accounts. It is printed on **PKR invoices only**, because those wallets take rupees.
+
+**Existing data:** migration `payment_accounts` moved the old bank name, account title and account number into one account called "Main account", marked Default and with no currencies. An account number that looked like an IBAN went into the IBAN field.
+
 ## 7. Invoice PDF
 
 - Generated server-side with `@react-pdf/renderer` (pure Node, no headless browser, works with the standalone build). Generated on demand; no PDF files stored on disk.
@@ -102,13 +130,13 @@ Confirmed with the client on 11 Oct 2026: **no conversion. Each client has their
   2. "Bill to": client name, company, email, phone.
   3. Items table: Description, Period, Qty, Amount (right-aligned, tabular).
   4. Totals: Subtotal, Discount (if any), Tax (if any), **Total** with currency.
-  5. Payment instructions from settings (bank name, account title, account number / IBAN, JazzCash / Easypaisa number).
+  5. Payment instructions: the filled fields of the account in the snapshot (§6a), in this order: Bank, Account title, Account number, IBAN, SWIFT/BIC, Branch code, then JazzCash / Easypaisa on PKR invoices. The values are in the monospace font, so they copy out of the PDF exactly (the regular font's ligatures don't).
   6. Footer note from settings (e.g. "Please pay before the due date to avoid service interruption.").
 - Same visual rules as `12` (neutral, hairlines, brand colour only for the title/accents, no gradients, no emoji).
 
 ## 8. Public invoice page `/i/[token]`
 
-- No login. `noindex`. Shows the invoice as HTML in the same design, with a "Download PDF" button and the payment instructions.
+- No login. `noindex`. Shows the invoice as HTML in the same design, with a "Download PDF" button and the payment instructions (the invoice's account, §6a).
 - Invalid or revoked token → a neutral "This invoice link is no longer valid" page (no detail leaks).
 - Owner can "Regenerate link" (revokes the old token). Logs `link_viewed` / `pdf_downloaded` events.
 - Basic rate limiting on `/i/*`.
@@ -128,7 +156,7 @@ Confirmed with the client on 11 Oct 2026: **no conversion. Each client has their
 ## 10. Reminders + invoices together
 
 - When a reminder fires for a service that has an invoice for this cycle, the reminder email attaches the PDF and both channels include the invoice link.
-- New template placeholders: `{{invoice_number}}`, `{{invoice_link}}`, `{{invoice_total}}`, `{{due_date}}`. A new template "Invoice" (email subject + body, WhatsApp body) in Settings → Templates.
+- New template placeholders: `{{invoice_number}}`, `{{invoice_link}}`, `{{invoice_total}}`, `{{due_date}}`, and in the Invoice templates `{{payment_details}}` (the invoice's account, §6a). A new template "Invoice" (email subject + body, WhatsApp body) in Settings → Templates.
 - Reminder queue rows: a new primary per-row action **"Send email + WhatsApp"** (single click, as in §9 "Both"), and an invoice chip ("INV-2026-0012 · Unpaid") that opens the invoice.
 - Bulk "Send N emails" stays as is for email. For WhatsApp in bulk, a **WhatsApp queue** dialog steps through the list: "1 of 5 · Ali Khan · Open WhatsApp" → Next. (Browsers block opening many tabs at once, and each message still needs Send pressed in WhatsApp.)
 
@@ -139,7 +167,7 @@ Confirmed with the client on 11 Oct 2026: **no conversion. Each client has their
 - **/invoices/[id]:** the invoice preview (same as the public page) on the left; on the right an actions panel (Share as the one primary button, Download PDF, Copy link, Mark as paid, Update from service, Regenerate link, Void) and the event timeline.
 - **Client detail:** an "Invoices" tab; each service card shows the current-cycle invoice chip and a Share invoice button.
 - **Dashboard:** queue rows get the invoice chip and "Send email + WhatsApp".
-- **Settings → Invoices** (new section): prefix, next number (read-only once invoices exist), lead days (15 / 30 / custom), logo upload, NTN, payment instructions fields, footer note, tax on/off + rate.
+- **Settings → Invoices** (new section): prefix, next number (read-only once invoices exist), lead days (15 / 30 / custom), logo upload, NTN, payment accounts (§6a), JazzCash / Easypaisa number, footer note, tax on/off + rate.
 - **Settings → Business → Currencies:** enabled currencies (searchable ISO 4217 picker, in-use ones locked) and the default currency for new clients (§6).
 
 ## 12. Tests

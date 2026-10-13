@@ -17,6 +17,7 @@ import {
 } from "@/lib/domain/invoices"
 import { currencyDecimals } from "@/lib/domain/currency"
 import { formatMoney, MONEY_SCALE } from "@/lib/domain/money"
+import { paymentSnapshot } from "@/lib/domain/payment-accounts"
 import { audit } from "@/lib/server/audit"
 import { today as clockToday } from "@/lib/server/clock"
 import { prisma, type Tx } from "@/lib/server/db"
@@ -59,7 +60,12 @@ const isUniqueViolation = (e: unknown) =>
 
 /* Snapshots ------------------------------------------------------------ */
 
-export function sellerSnapshot(s: AppSettings): SellerSnapshot {
+/**
+ * The business details an invoice keeps. The payment account is the one for
+ * the invoice's currency (else the Default), chosen now and never again
+ * unless "Refresh business details" runs on an unpaid invoice.
+ */
+export function sellerSnapshot(s: AppSettings, currency: string): SellerSnapshot {
   return {
     businessName: s.businessName,
     tagline: s.businessTagline,
@@ -68,12 +74,7 @@ export function sellerSnapshot(s: AppSettings): SellerSnapshot {
     email: s.smtp.fromEmail || s.adminEmail,
     ntn: s.invoices.ntn,
     logo: s.invoices.logo,
-    payment: {
-      bankName: s.invoices.bankName,
-      accountTitle: s.invoices.accountTitle,
-      accountNumber: s.invoices.accountNumber,
-      wallet: s.invoices.wallet,
-    },
+    payment: paymentSnapshot(s.invoices.accounts, s.invoices.wallet, currency),
     footer: s.invoices.footer,
   }
 }
@@ -173,7 +174,7 @@ export async function createCycleInvoice(
       dueDate: toDbDate(dueDate),
       ...amounts,
       billTo: billToSnapshot(service.client) as unknown as Prisma.InputJsonValue,
-      seller: sellerSnapshot(settings) as unknown as Prisma.InputJsonValue,
+      seller: sellerSnapshot(settings, amounts.currency) as unknown as Prisma.InputJsonValue,
       publicToken: publicToken(),
       items: { create: items },
     },
@@ -268,10 +269,20 @@ export async function updateFromService(invoiceId: number): Promise<{ ok: true }
       fromDbDate(inv.periodStart),
       fromDbDate(inv.periodEnd)
     )
+    // A new currency needs that currency's payment details; the rest of the
+    // business snapshot stays as it was (Refresh business details changes it).
+    let seller: Prisma.InputJsonValue | undefined
+    if (amounts.currency !== inv.currency) {
+      const old = inv.seller as unknown as SellerSnapshot
+      seller = {
+        ...old,
+        payment: paymentSnapshot(settings.invoices.accounts, settings.invoices.wallet, amounts.currency),
+      } as unknown as Prisma.InputJsonValue
+    }
     await tx.invoiceItem.deleteMany({ where: { invoiceId } })
     await tx.invoice.update({
       where: { id: invoiceId },
-      data: { ...amounts, items: { create: items } },
+      data: { ...amounts, ...(seller ? { seller } : {}), items: { create: items } },
     })
     await recordInvoiceEvent(invoiceId, "updated", { total: amounts.total, currency: amounts.currency }, { db: tx })
     return { ok: true as const }
@@ -280,21 +291,25 @@ export async function updateFromService(invoiceId: number): Promise<{ ok: true }
 
 /**
  * Copies the current business details (Settings → Business and Invoices:
- * name, address, NTN, logo, payment instructions, footer) into an unpaid
- * invoice's seller snapshot. Paid and void invoices stay locked.
+ * name, address, NTN, logo, payment account for the invoice's currency,
+ * footer) into an unpaid invoice's seller snapshot. Paid and void invoices
+ * stay locked.
  */
 export async function refreshBusinessDetails(
   invoiceId: number
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const settings = await getAppSettings()
   return prisma.$transaction(async (tx) => {
-    const inv = await tx.invoice.findUnique({ where: { id: invoiceId }, select: { status: true } })
+    const inv = await tx.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { status: true, currency: true },
+    })
     if (!inv) return { ok: false as const, error: "Invoice not found." }
     if (!isOpenInvoice(inv.status))
       return { ok: false as const, error: "Paid and void invoices can’t be changed." }
     await tx.invoice.update({
       where: { id: invoiceId },
-      data: { seller: sellerSnapshot(settings) as unknown as Prisma.InputJsonValue },
+      data: { seller: sellerSnapshot(settings, inv.currency) as unknown as Prisma.InputJsonValue },
     })
     await recordInvoiceEvent(invoiceId, "details_refreshed", undefined, { db: tx })
     return { ok: true as const }
