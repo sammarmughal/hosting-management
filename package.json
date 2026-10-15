@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:hostinger": "node scripts/build-hostinger.mjs",
     "postbuild": "node scripts/postbuild.mjs",
     "start": "node scripts/start.mjs",
     "lint": "eslint",

@@ -18,7 +18,9 @@ const nextConfig: NextConfig = {
   // The invoice PDF reads its TTF fonts at runtime (docs/13 §7); ship them
   // with the standalone build for every route that can render a PDF
   // (downloads, the public link, and emails sent from Server Actions).
-  outputFileTracingIncludes: { "/**": ["./src/assets/fonts/**"] },
+  outputFileTracingIncludes: {
+    "/**": ["./src/assets/fonts/**", "./node_modules/pdfkit/js/standard-fonts/**"],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }]
   },
