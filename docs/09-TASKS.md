@@ -154,6 +154,10 @@ Owner decision: the database moves from Neon Postgres to Hostinger's MySQL/Maria
 - [x] Lint, unit + integration tests, build and Playwright green against MariaDB 11.8.9 (portable server), with the `mariadb@3.5.4` override.
 - [ ] Confirm the Hostinger MariaDB/MySQL version in phpMyAdmin and set it in `docker-compose.yml`.
 
+## Hostinger build (15 Oct 2026)
+- [x] Hostinger's build failed in Turbopack (`globals.css`, "node process exited before we could connect to it"): `npm run build` is now `next build --webpack`, with one build worker and webpack memory optimisations (`next.config.ts`); `build:hostinger` adds a heap cap. Lint, typecheck, 483 tests, both builds, Playwright and `check:clean-install` green locally.
+- [ ] Hostinger rebuild succeeds from the pushed commit.
+
 ## Clean install (13 Oct 2026)
 - [x] `npm ci` works without `DATABASE_URL`: `prisma.config.ts` reads it optionally, so `prisma generate` (postinstall) runs; `migrate`/`db seed`/the app still stop clearly without it.
 - [x] README: copy `.env.example` to `.env` before `npm ci`.

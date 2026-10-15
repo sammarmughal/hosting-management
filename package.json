@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "build:hostinger": "node scripts/build-hostinger.mjs",
     "postbuild": "node scripts/postbuild.mjs",
     "start": "node scripts/start.mjs",

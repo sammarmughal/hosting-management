@@ -128,10 +128,12 @@ Node.js apps are available on Hostinger **Business web hosting** and **Cloud** p
    | Framework preset | Next.js (auto-detected) |
    | Node.js version | 20 or 22 |
    | Install command | `npm ci` (runs `prisma generate` through `postinstall`; that step needs no database, so it works even if hPanel's variables aren't visible during install) |
-   | Build command | `npm run build:hostinger` |
+   | Build command | `npm run build` (webpack; works as is) or `npm run build:hostinger` (the same build with a heap cap, below) |
    | Entry file / start | `.next/standalone/server.js` (or `npm start`, which runs the same file). The `postbuild` script (`scripts/postbuild.mjs`) copies `public/` and `.next/static/` next to it and removes any `.env` file from the build output. The server listens on `PORT`, which Hostinger sets. |
 
-   `build:hostinger` uses Next.js 16's `--webpack` flag to avoid Turbopack's PostCSS worker on process-limited hosting, disables telemetry (`NEXT_TELEMETRY_DISABLED=1`), and caps each Node process's V8 old-space heap at 1024 MiB via `NODE_OPTIONS`. This is not a total memory cap; native allocations and multiple workers need additional memory. It also runs the standalone postbuild copy/cleanup. The normal `npm run build` remains unchanged. Installation still runs `postinstall` → `prisma generate`; neither installation nor building requires `DATABASE_URL`, but the running server does.
+   **Why webpack:** Next.js 16 builds with Turbopack by default. Turbopack runs PostCSS (Tailwind) for `src/app/globals.css` in a separate Node process, and Hostinger's process limits stop it. The build then fails with `TurbopackInternalError: [project]/src/app/globals.css … node process exited before we could connect to it`. So `npm run build` is `next build --webpack`, which runs PostCSS inside the build itself. `next.config.ts` also limits the build to one worker (`experimental.cpus: 1`) and turns on webpack's memory optimisations. `npm run dev` still uses Turbopack locally.
+
+   `build:hostinger` is the same webpack build with telemetry off (`NEXT_TELEMETRY_DISABLED=1`) and each Node process's V8 old-space heap capped at 1024 MiB via `NODE_OPTIONS`. That isn't a total memory cap: native allocations need more. It also runs the standalone postbuild copy and cleanup. Use it if a build is stopped for memory. Installation still runs `postinstall` → `prisma generate`. Neither installing nor building needs `DATABASE_URL`, but the running server does.
 
 5. Add the environment variables from §2, then redeploy.
 6. **Domain:** connect `renewals.abdulrehmaan.net` to the app (hPanel → the app → **Domains**; if `abdulrehmaan.net` is managed in Hostinger, the DNS record is added for you, otherwise add the record hPanel shows at your DNS provider). Turn on the free SSL certificate and **Force HTTPS**.

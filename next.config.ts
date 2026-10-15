@@ -15,6 +15,15 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   devIndicators: false,
   serverExternalPackages: ["@node-rs/argon2", "@react-pdf/renderer"],
+  // Hostinger's build runs under shared-hosting process and memory limits
+  // (docs/11 §3). `npm run build` and `build:hostinger` use webpack, because
+  // Turbopack runs PostCSS (Tailwind) in a separate Node process that
+  // Hostinger stops ("node process exited before we could connect to it").
+  // One worker and webpack's memory optimisations keep the build small.
+  experimental: {
+    cpus: 1,
+    webpackMemoryOptimizations: true,
+  },
   // The invoice PDF reads its TTF fonts at runtime (docs/13 §7); ship them
   // with the standalone build for every route that can render a PDF
   // (downloads, the public link, and emails sent from Server Actions).
