@@ -8,6 +8,7 @@ import { expect, test } from "@playwright/test"
 import { addDays, addOneYear, formatDatePK, todayPK } from "../../src/lib/domain/dates"
 import { E2E } from "./e2e-config"
 import { signIn } from "./sign-in"
+import { addClient, addSubscription } from "./ui-helpers"
 
 const DOMAIN = "e2e-noordental.pk"
 
@@ -33,30 +34,31 @@ test("invoice lifecycle: check → invoice → email with PDF → public link �
 
   await signIn(page)
 
-  // 1. Client + service renewing in 20 days.
-  await page.goto("/clients/new")
-  await page.fill("#client-name", "Noor Dental Clinic E2E")
-  await page.fill("#client-email", "info@e2e-noordental.pk")
-  await page.fill("#client-phone", "0321 4455667")
-  await page.fill("#service-domain", DOMAIN)
-  await page.fill("#service-startDate", addDays(renewal, -365))
-  await page.fill("#service-renewalDate", renewal)
-  await page.fill("#service-chargeAmount", "8,750")
-  await page.getByRole("button", { name: "Save client" }).click()
-  await page.waitForURL(/\/clients\/\d+\?saved=client/)
-  const clientUrl = page.url().split("?")[0]!
+  // 1. A client, then a subscription renewing in 20 days (docs/14 §0).
+  const clientUrl = await addClient(page, {
+    name: "Noor Dental Clinic E2E",
+    email: "info@e2e-noordental.pk",
+    phone: "0321 4455667",
+  })
+  await addSubscription(page, clientUrl, {
+    domain: DOMAIN,
+    start: addDays(renewal, -365),
+    renewal,
+    charge: "8,750",
+  })
 
   // 2. Run the check (no cron: the "Check now" button).
   await page.goto("/dashboard")
   await page.getByRole("button", { name: "Check now" }).click()
-  await expect(page.getByText(/Checked \d+ services?/)).toBeVisible()
+  await expect(page.getByText(/Checked \d+ subscriptions?/)).toBeVisible()
 
   // 3. The invoice exists.
   await page.goto(`/invoices?q=${DOMAIN}`)
   const number = page.getByRole("link", { name: /^INV-\d{4}-\d{4}$/ }).first()
   await expect(number).toBeVisible()
   const invoiceNumber = (await number.innerText()).trim()
-  expect(invoiceNumber).toMatch(new RegExp(`^INV-${today.slice(0, 4)}-0001$`))
+  // Numbered per year; other specs may have issued earlier ones this run.
+  expect(invoiceNumber).toMatch(new RegExp(`^INV-${today.slice(0, 4)}-\\d{4}$`))
   await number.click()
   await page.waitForURL(/\/invoices\/\d+$/)
   const invoiceUrl = page.url()
@@ -66,7 +68,9 @@ test("invoice lifecycle: check → invoice → email with PDF → public link �
   const dialog = page.getByRole("dialog")
   await dialog.getByRole("radio", { name: /Email/ }).click()
   await dialog.getByRole("button", { name: "Send email" }).click()
-  await expect(dialog.getByText("Email sent to info@e2e-noordental.pk")).toBeVisible({ timeout: 30_000 })
+  await expect(dialog.getByText("Email sent to info@e2e-noordental.pk")).toBeVisible({
+    timeout: 30_000,
+  })
   const mail = mailbox().at(-1)!
   expect(mail.rcpt.join(" ")).toContain("info@e2e-noordental.pk")
   expect(mail.data).toContain("application/pdf")
@@ -82,7 +86,11 @@ test("invoice lifecycle: check → invoice → email with PDF → public link �
   expect(link).toMatch(/\/i\/[0-9a-f]{64}$/)
   expect(mail.data.replace(/=\r?\n/g, "")).toContain(link.split("/i/")[1])
 
-  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+  const phone = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  })
   const pub = await phone.newPage()
   const res = await pub.goto(link)
   expect(res?.headers()["x-robots-tag"]).toContain("noindex")
@@ -93,8 +101,12 @@ test("invoice lifecycle: check → invoice → email with PDF → public link �
   await expect(payment.getByText("Example Bank Pakistan")).toBeVisible()
   await expect(payment.getByText("Example Bank UAE")).toHaveCount(0)
   await expect(payment.getByText("SWIFT/BIC")).toHaveCount(0)
-  expect(mail.data.replace(/=\r?\n/g, "")).toContain("IBAN: PK11 TEST 0000 0012 3456 7890")
-  const overflow = await pub.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(mail.data.replace(/=\r?\n/g, "")).toContain(
+    "IBAN: PK11 TEST 0000 0012 3456 7890"
+  )
+  const overflow = await pub.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+  )
   expect(overflow).toBe(0)
 
   // 6. PDF download returns application/pdf.
@@ -114,9 +126,11 @@ test("invoice lifecycle: check → invoice → email with PDF → public link �
   await expect(renew.locator("#renew-amount")).toHaveValue("8,750")
   const next = addOneYear(renewal)
   await renew.getByRole("button", { name: `Renew until ${formatDatePK(next)}` }).click()
-  await expect(page.getByText(`${DOMAIN} renewed until ${formatDatePK(next)}`)).toBeVisible()
+  await expect(
+    page.getByText(`${DOMAIN} renewed until ${formatDatePK(next)}`)
+  ).toBeVisible()
   await page.reload()
   await expect(page.getByText(/^Paid on /).first()).toBeVisible()
-  await page.goto(clientUrl)
+  await page.goto(`${clientUrl}?tab=subscriptions`)
   await expect(page.getByText(formatDatePK(next)).first()).toBeVisible()
 })

@@ -232,6 +232,7 @@ describe("what an invoice prints", () => {
 describe("invoice email payment details", () => {
   const service = {
     domain: "example.pk",
+    serviceName: "Web Hosting",
     clientName: "Test Client",
     renewalDate: "2026-11-01",
     daysLeft: 10,

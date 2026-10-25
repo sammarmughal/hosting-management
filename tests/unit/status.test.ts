@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { serviceColour, statusColour } from "@/lib/domain/status"
+import { subscriptionColour, statusColour } from "@/lib/domain/status"
 
 describe("statusColour (defaults T_o=30, T_r=7)", () => {
   it.each([
@@ -29,12 +29,12 @@ describe("statusColour (custom T_o=45, T_r=10)", () => {
   })
 })
 
-describe("serviceColour", () => {
+describe("subscriptionColour", () => {
   it("is cancelled regardless of days", () => {
-    expect(serviceColour(3, "cancelled")).toBe("cancelled")
-    expect(serviceColour(-10, "cancelled")).toBe("cancelled")
+    expect(subscriptionColour(3, "cancelled")).toBe("cancelled")
+    expect(subscriptionColour(-10, "cancelled")).toBe("cancelled")
   })
   it("uses statusColour for active services", () => {
-    expect(serviceColour(3, "active")).toBe("red")
+    expect(subscriptionColour(3, "active")).toBe("red")
   })
 })

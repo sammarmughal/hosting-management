@@ -16,9 +16,11 @@ describe("parseReminderLogParams", () => {
         from: "2026-09-01",
         to: "2026-09-30",
         q: " noor ",
+        company: "4",
         page: "2",
       })
     ).toEqual({
+      company: 4,
       channel: "whatsapp",
       status: "failed",
       from: "2026-09-01",
@@ -33,7 +35,7 @@ describe("parseReminderLogParams", () => {
         from: "2026-02-30",
         page: "x",
       })
-    ).toEqual({ channel: "", status: "", from: "", to: "", q: "", page: 1 })
+    ).toEqual({ channel: "", status: "", from: "", to: "", q: "", company: 0, page: 1 })
   })
 
   it("ignores a to-date before the from-date", () => {

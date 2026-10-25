@@ -24,6 +24,12 @@ export async function signIn(page: Page) {
       await page.waitForURL(/\/dashboard$/, { timeout: 10_000 })
       return
     } catch {
+      // The first dashboard load on a cold server can take longer than that:
+      // signed in already once the page has left /2fa.
+      if (!new URL(page.url()).pathname.startsWith("/2fa")) {
+        await page.waitForURL(/\/dashboard$/, { timeout: 60_000 })
+        return
+      }
       // Same step as the previous sign-in: try the next code.
     }
   }

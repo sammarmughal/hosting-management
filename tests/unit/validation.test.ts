@@ -4,7 +4,7 @@ import { renewSchema, type RenewInput } from "@/lib/domain/validation"
 
 const TODAY = "2026-09-29"
 const base: RenewInput = {
-  serviceId: 101,
+  subscriptionId: 101,
   amount: "6500",
   paidOn: TODAY,
   method: "JazzCash",
@@ -36,7 +36,9 @@ describe("renewSchema", () => {
   it("checks decimals against the service's currency", () => {
     const amountError = (amount: string, currency: string) => {
       const r = renewSchema(TODAY, currency).safeParse({ ...base, amount })
-      return r.success ? undefined : r.error.issues.find((i) => i.path[0] === "amount")?.message
+      return r.success
+        ? undefined
+        : r.error.issues.find((i) => i.path[0] === "amount")?.message
     }
     expect(amountError("6,500", "PKR")).toBeUndefined()
     expect(amountError("6500.50", "PKR")).toBe("PKR amounts can’t have decimals")

@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test"
 
 import { signIn } from "./sign-in"
 
-test("health is public and data-free; Settings → Backup downloads four CSVs", async ({
+test("health is public and data-free; Settings → Backup downloads five CSVs", async ({
   page,
   request,
 }) => {
@@ -20,13 +20,18 @@ test("health is public and data-free; Settings → Backup downloads four CSVs", 
   await page.goto("/settings?tab=backup")
   await expect(page.getByRole("heading", { name: "Backup" })).toBeVisible()
   for (const [name, file, header] of [
-    ["clients", "clients", "client_name,company,email,phone,address,client_currency"],
+    ["clients", "clients", "name,email,phone,address,currency,notes"],
+    ["companies", "companies", "client_name,client_email,client_phone,company_name"],
     [
-      "services",
-      "services",
-      "client_name,company,email,phone,address,client_currency,domain",
+      "subscriptions",
+      "subscriptions",
+      "client_name,client_email,client_phone,company_name,service_type,domain",
     ],
-    ["payments", "payments", "paid_on,client_name,domain,amount,currency"],
+    [
+      "payments",
+      "payments",
+      "paid_on,client_name,company,service_type,domain,amount,currency",
+    ],
     ["invoices", "invoices", "number,issue_date,due_date,client_name"],
   ] as const) {
     const download = page.waitForEvent("download")

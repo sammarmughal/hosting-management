@@ -20,14 +20,18 @@ async function reset() {
 }
 
 let seq = 0
-async function client(name: string, serviceCurrencies: string[], currency: string) {
+async function client(name: string, subscriptionCurrencies: string[], currency: string) {
+  const serviceTypeId = (
+    await prisma.serviceType.findUniqueOrThrow({ where: { name: "Web Hosting" } })
+  ).id
   return prisma.client.create({
     data: {
       name,
       email: `${name.toLowerCase()}@client.pk`,
       currency,
-      services: {
-        create: serviceCurrencies.map((c) => ({
+      subscriptions: {
+        create: subscriptionCurrencies.map((c) => ({
+          serviceTypeId,
           domain: `s${++seq}.pk`,
           startDate: toDbDate("2025-10-01"),
           renewalDate: toDbDate("2026-10-01"),
@@ -43,18 +47,18 @@ describe.skipIf(!enabled)("currencies in use stay on (docs/13 §6)", () => {
   beforeEach(reset)
   afterAll(() => prisma.$disconnect())
 
-  it("counts clients and services per currency", async () => {
+  it("counts clients and subscriptions per currency", async () => {
     await client("Uae", ["AED", "USD"], "AED")
     await client("Pk", ["PKR"], "PKR")
     await client("Mixed", ["AED"], "PKR")
     const usage = await getCurrencyUsage()
     expect(usage).toEqual({
-      AED: { clients: 1, services: 2 },
-      PKR: { clients: 2, services: 1 },
-      USD: { clients: 0, services: 1 },
+      AED: { clients: 1, subscriptions: 2 },
+      PKR: { clients: 2, subscriptions: 1 },
+      USD: { clients: 0, subscriptions: 1 },
     })
     expect(currencyInUseError(["AED", "PKR"], usage)).toBe(
-      "USD is used by 1 service, so it can’t be turned off."
+      "USD is used by 1 subscription, so it can’t be turned off."
     )
     expect(currencyInUseError(["AED", "PKR", "USD"], usage)).toBeNull()
   })

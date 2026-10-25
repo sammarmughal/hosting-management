@@ -7,7 +7,7 @@ import {
   planCheck,
   rowsFor,
   type CheckConfig,
-  type CheckService,
+  type CheckSubscription,
 } from "@/lib/domain/reminder-engine"
 import { parseStages } from "@/lib/domain/stages"
 
@@ -21,7 +21,7 @@ const cfg: CheckConfig = {
 }
 
 let nextId = 1
-function svc(days: number, patch: Partial<CheckService> = {}): CheckService {
+function svc(days: number, patch: Partial<CheckSubscription> = {}): CheckSubscription {
   const id = nextId++
   return {
     id,
@@ -55,7 +55,10 @@ describe("planCheck (docs/10 §1 reminders scenario)", () => {
 
   it("leaves out cancelled services and services with reminders off", () => {
     expect(
-      planCheck([svc(3, { status: "cancelled" }), svc(3, { remindersEnabled: false })], cfg)
+      planCheck(
+        [svc(3, { status: "cancelled" }), svc(3, { remindersEnabled: false })],
+        cfg
+      )
     ).toEqual([])
   })
 
@@ -120,7 +123,9 @@ describe("rowsFor (docs/04 §3.2)", () => {
   })
 
   it("leaves out admin rows when the admin email / WhatsApp are not set", () => {
-    expect(rowsFor(both, 7, { ...cfg, hasAdminEmail: false, hasAdminWhatsapp: false })).toEqual([
+    expect(
+      rowsFor(both, 7, { ...cfg, hasAdminEmail: false, hasAdminWhatsapp: false })
+    ).toEqual([
       { channel: "email", recipient: "client" },
       { channel: "whatsapp", recipient: "client" },
     ])

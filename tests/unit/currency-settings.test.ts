@@ -13,7 +13,12 @@ import {
   ISO_CURRENCIES,
   normaliseCurrencyList,
 } from "@/lib/domain/currency"
-import { previewImport } from "@/lib/domain/import"
+import {
+  emptyImportContext,
+  previewClients,
+  previewSubscriptions,
+  type ImportContext,
+} from "@/lib/domain/import"
 import { businessSchema, INITIAL_PREFERENCES } from "@/lib/domain/preferences"
 import { SETTING_DEFAULTS } from "@/lib/server/settings-keys"
 
@@ -31,7 +36,11 @@ describe("ISO 4217 currencies (docs/13 §6)", () => {
   })
   it("enables PKR, USD and AED by default", () => {
     expect(INITIAL_PREFERENCES.business.enabledCurrencies).toEqual(["AED", "PKR", "USD"])
-    expect(SETTING_DEFAULTS.enabled_currencies.split(",").sort()).toEqual(["AED", "PKR", "USD"])
+    expect(SETTING_DEFAULTS.enabled_currencies.split(",").sort()).toEqual([
+      "AED",
+      "PKR",
+      "USD",
+    ])
     expect(SETTING_DEFAULTS.default_currency).toBe("PKR")
   })
 })
@@ -60,7 +69,10 @@ describe("names and decimals from Intl", () => {
   it("gives the picker every code with a name", () => {
     const catalog = currencyCatalog()
     expect(catalog).toHaveLength(ISO_CURRENCIES.length)
-    expect(catalog.find((c) => c.code === "PKR")).toEqual({ code: "PKR", name: "Pakistani Rupee" })
+    expect(catalog.find((c) => c.code === "PKR")).toEqual({
+      code: "PKR",
+      name: "Pakistani Rupee",
+    })
   })
 })
 
@@ -95,30 +107,40 @@ describe("currencyOptions", () => {
 })
 
 describe("a currency in use can't be disabled", () => {
-  const usage = { AED: { clients: 2, services: 1 }, PKR: { clients: 9, services: 12 } }
+  const usage = {
+    AED: { clients: 2, subscriptions: 1 },
+    PKR: { clients: 9, subscriptions: 12 },
+  }
 
   it("explains what uses it", () => {
-    expect(currencyUseText(usage.AED)).toBe("Used by 2 clients and 1 service")
-    expect(currencyUseText({ clients: 0, services: 1 })).toBe("Used by 1 service")
-    expect(currencyUseText({ clients: 1, services: 0 })).toBe("Used by 1 client")
-    expect(currencyUseText({ clients: 0, services: 0 })).toBeNull()
+    expect(currencyUseText(usage.AED)).toBe("Used by 2 clients and 1 subscription")
+    expect(currencyUseText({ clients: 0, subscriptions: 1 })).toBe(
+      "Used by 1 subscription"
+    )
+    expect(currencyUseText({ clients: 1, subscriptions: 0 })).toBe("Used by 1 client")
+    expect(currencyUseText({ clients: 0, subscriptions: 0 })).toBeNull()
     expect(currencyUseText(undefined)).toBeNull()
   })
   it("blocks a save that turns off a used currency", () => {
     expect(currencyInUseError(["PKR"], usage)).toBe(
-      "AED is used by 2 clients and 1 service, so it can’t be turned off."
+      "AED is used by 2 clients and 1 subscription, so it can’t be turned off."
     )
   })
   it("allows turning off unused currencies", () => {
     expect(currencyInUseError(["AED", "PKR"], usage)).toBeNull()
-    expect(currencyInUseError(["AED", "PKR"], { ...usage, USD: { clients: 0, services: 0 } }))
-      .toBeNull()
+    expect(
+      currencyInUseError(["AED", "PKR"], {
+        ...usage,
+        USD: { clients: 0, subscriptions: 0 },
+      })
+    ).toBeNull()
   })
 })
 
 describe("business settings: currencies", () => {
   const base = INITIAL_PREFERENCES.business
-  const parse = (patch: Partial<typeof base>) => businessSchema.safeParse({ ...base, ...patch })
+  const parse = (patch: Partial<typeof base>) =>
+    businessSchema.safeParse({ ...base, ...patch })
 
   it("accepts any ISO code and stores the list alphabetically", () => {
     const r = parse({ enabledCurrencies: ["usd", "KWD", "PKR"], defaultCurrency: "PKR" })
@@ -136,49 +158,64 @@ describe("business settings: currencies", () => {
   })
 })
 
-describe("import: client and service currencies", () => {
-  const row = {
+describe("import: client and subscription currencies", () => {
+  const ctx: ImportContext = {
+    ...emptyImportContext("2026-10-02"),
+    currencies: { default: "PKR", enabled: ["AED", "PKR", "USD"] },
+    clients: [
+      {
+        id: 1,
+        name: "Faisal Ahmed",
+        email: "faisal@faisalprint.pk",
+        phone: null,
+        currency: "AED",
+      },
+    ],
+    serviceTypes: [{ id: 2, name: "Web Hosting", isActive: true }],
+  }
+  const sub = {
     client_name: "Faisal Ahmed",
-    email: "faisal@faisalprint.pk",
+    client_email: "faisal@faisalprint.pk",
+    service_type: "Web Hosting",
     domain: "faisalprint.pk",
     start_date: "30/09/2025",
     renewal_date: "30/09/2026",
     charge_amount: "120",
-    client_currency: "",
     currency: "",
   }
-  const currencies = { default: "PKR", enabled: ["AED", "PKR", "USD"] }
-  const preview = (patch: Partial<typeof row>) =>
-    previewImport([{ ...row, ...patch }], [], "2026-10-02", currencies)[0]
+  const preview = (patch: Partial<typeof sub>) =>
+    previewSubscriptions([{ ...sub, ...patch }], ctx)[0]
 
-  it("uses the app default when client_currency is blank, and the service follows", () => {
-    const r = preview({})
-    expect(r?.input.client.currency).toBe("PKR")
-    expect(r?.input.service.currency).toBe("PKR")
+  it("uses the app default when a client's currency is blank", () => {
+    const r = previewClients(
+      [{ name: "Sana Javed", email: "sana@x.pk", currency: "" }],
+      ctx
+    )[0]
+    expect(r?.data?.currency).toBe("PKR")
     expect(r?.status).toBe("valid")
   })
-  it("starts the service in the client's currency when currency is blank", () => {
-    const r = preview({ client_currency: "aed" })
-    expect(r?.input.client.currency).toBe("AED")
-    expect(r?.input.service.currency).toBe("AED")
+  it("starts a subscription in its client's currency when currency is blank", () => {
+    expect(preview({})?.data?.currency).toBe("AED")
   })
-  it("lets the service override the client's currency", () => {
-    const r = preview({ client_currency: "AED", currency: "USD" })
-    expect(r?.input.client.currency).toBe("AED")
-    expect(r?.input.service.currency).toBe("USD")
+  it("lets the subscription override the client's currency", () => {
+    expect(preview({ currency: "USD", charge_amount: "49.99" })?.data?.currency).toBe(
+      "USD"
+    )
   })
-  it("rejects a currency that isn't turned on, for the client or the service", () => {
+  it("rejects a currency that isn't turned on, for a client or a subscription", () => {
     expect(preview({ currency: "gbp" })).toMatchObject({
       status: "error",
       message: "GBP isn’t turned on in Settings",
     })
-    expect(preview({ client_currency: "SAR" })).toMatchObject({
+    expect(
+      previewClients([{ name: "Sara", email: "s@x.pk", currency: "SAR" }], ctx)[0]
+    ).toMatchObject({
       status: "error",
       message: "SAR isn’t turned on in Settings",
     })
   })
   it("rejects amounts with more decimals than the currency has", () => {
-    expect(preview({ charge_amount: "6500.50" })).toMatchObject({
+    expect(preview({ currency: "PKR", charge_amount: "6500.50" })).toMatchObject({
       status: "error",
       message: "PKR amounts can’t have decimals",
     })

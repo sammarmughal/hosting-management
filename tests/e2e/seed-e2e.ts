@@ -21,7 +21,9 @@ function encrypt(plain: string, appKey: string) {
   const iv = randomBytes(12)
   const cipher = createCipheriv("aes-256-gcm", key, iv)
   const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()])
-  return ["v1", iv, cipher.getAuthTag(), data].map((p) => p.toString("base64url")).join(".")
+  return ["v1", iv, cipher.getAuthTag(), data]
+    .map((p) => p.toString("base64url"))
+    .join(".")
 }
 
 async function main() {
@@ -31,8 +33,15 @@ async function main() {
   const prisma = new PrismaClient({ adapter: new PrismaMariaDb(mariadbConfig(url)) })
   try {
     await resetDb(prisma, [
-      "admins", "login_attempts", "clients", "settings", "message_templates", "audit_log",
-      "invoice_counters", "rate_limits",
+      "admins",
+      "login_attempts",
+      "clients",
+      "service_types",
+      "settings",
+      "message_templates",
+      "audit_log",
+      "invoice_counters",
+      "rate_limits",
     ])
     const settings: Record<string, string | null> = {
       ...SETTING_DEFAULTS,
@@ -53,7 +62,9 @@ async function main() {
     for (const [key, value] of Object.entries(settings))
       await prisma.setting.create({ data: { key, value } })
     for (const [key, t] of Object.entries(DEFAULT_TEMPLATES))
-      await prisma.messageTemplate.create({ data: { key, subject: t.subject ?? null, body: t.body } })
+      await prisma.messageTemplate.create({
+        data: { key, subject: t.subject ?? null, body: t.body },
+      })
     await prisma.admin.create({
       data: {
         username: E2E.username,

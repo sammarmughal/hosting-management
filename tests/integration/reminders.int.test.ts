@@ -6,7 +6,7 @@ import { encrypt } from "@/lib/server/crypto"
 import { prisma } from "@/lib/server/db"
 import { fromDbDate, toDbDate } from "@/lib/server/db-dates"
 import { devOutbox } from "@/lib/server/mail"
-import { renewService } from "@/lib/server/renewals"
+import { renewSubscription } from "@/lib/server/renewals"
 import {
   runCheck,
   sendAdminSummaryEmail,
@@ -17,6 +17,7 @@ import { updateSettings } from "@/lib/server/settings"
 import { SETTING_DEFAULTS } from "@/lib/server/settings-keys"
 
 import { resetDb } from "../helpers/reset-db"
+import { clientWithSubscription } from "../helpers/subscription-fixtures"
 
 const TODAY = "2026-10-10"
 const enabled = !!process.env.TEST_DATABASE_URL
@@ -41,28 +42,24 @@ async function service(
   client: { email?: string | null; phone?: string | null } = {}
 ) {
   const renewal = addDays(TODAY, days)
-  const c = await prisma.client.create({
-    data: {
+  return clientWithSubscription(prisma, {
+    client: {
       name: `Client d${days}`,
       email: client.email === undefined ? `d${days}@client.pk` : client.email,
       phone: client.phone === undefined ? "923001234567" : client.phone,
       currency: "PKR",
-      services: {
-        create: {
-          domain: `d${days >= 0 ? days : `m${-days}`}.pk`,
-          startDate: toDbDate(addDays(renewal, -365)),
-          renewalDate: toDbDate(renewal),
-          chargeAmount: "6500.00",
-        },
-      },
     },
-    include: { services: true },
+    subscription: {
+      domain: `d${days >= 0 ? days : `m${-days}`}.pk`,
+      startDate: toDbDate(addDays(renewal, -365)),
+      renewalDate: toDbDate(renewal),
+      chargeAmount: "6500.00",
+    },
   })
-  return c.services[0]!
 }
 
-const rowsFor = (serviceId: number) =>
-  prisma.reminder.findMany({ where: { serviceId }, orderBy: { id: "asc" } })
+const rowsFor = (subscriptionId: number) =>
+  prisma.reminder.findMany({ where: { subscriptionId }, orderBy: { id: "asc" } })
 
 describe.skipIf(!enabled)("runCheck (docs/10 §1)", () => {
   beforeEach(reset)
@@ -99,7 +96,10 @@ describe.skipIf(!enabled)("runCheck (docs/10 §1)", () => {
     await service(12)
     await service(-4)
     for (let round = 0; round < 5; round++) {
-      const results = await Promise.all([runCheck({ force: true }), runCheck({ force: true })])
+      const results = await Promise.all([
+        runCheck({ force: true }),
+        runCheck({ force: true }),
+      ])
       if (round === 0) {
         // Whichever ran first queued everything; the other found the lock
         // held (ran: false) or, if it came after, nothing left to queue.
@@ -111,7 +111,9 @@ describe.skipIf(!enabled)("runCheck (docs/10 §1)", () => {
       }
     }
     expect(await prisma.reminder.count()).toBe(12)
-    expect(await prisma.notification.count({ where: { type: { not: "invoice_created" } } })).toBe(3)
+    expect(
+      await prisma.notification.count({ where: { type: { not: "invoice_created" } } })
+    ).toBe(3)
     expect(await prisma.invoice.count()).toBe(3)
     const numbers = await prisma.invoice.findMany({ select: { number: true } })
     expect(new Set(numbers.map((n) => n.number)).size).toBe(3)
@@ -152,7 +154,9 @@ describe.skipIf(!enabled)("runCheck (docs/10 §1)", () => {
     const later = await runCheck({ force: true })
     expect((await rowsFor(s30.id)).map((r) => r.stage)).toEqual([30, 30, 30, 30])
     const rows12 = await rowsFor(s12.id)
-    expect(rows12.filter((r) => r.stage === 15).every((r) => r.status === "skipped")).toBe(true)
+    expect(
+      rows12.filter((r) => r.stage === 15).every((r) => r.status === "skipped")
+    ).toBe(true)
     expect(rows12.filter((r) => r.stage === 7)).toHaveLength(4)
     expect(later.skipped).toBeGreaterThanOrEqual(4)
   })
@@ -160,8 +164,8 @@ describe.skipIf(!enabled)("runCheck (docs/10 §1)", () => {
   it("renewing skips the old cycle and the next check queues nothing for it", async () => {
     const s0 = await service(0)
     await runCheck({ force: true })
-    const newDate = await renewService({
-      serviceId: s0.id,
+    const newDate = await renewSubscription({
+      subscriptionId: s0.id,
       amount: "6500",
       paidOn: TODAY,
       method: "Cash",
@@ -171,9 +175,9 @@ describe.skipIf(!enabled)("runCheck (docs/10 §1)", () => {
     expect((await rowsFor(s0.id)).every((r) => r.status === "skipped")).toBe(true)
     const after = await runCheck({ force: true })
     expect(after.queuedNew).toBe(0)
-    const svc = await prisma.service.findUniqueOrThrow({ where: { id: s0.id } })
+    const svc = await prisma.subscription.findUniqueOrThrow({ where: { id: s0.id } })
     expect(fromDbDate(svc.renewalDate)).toBe("2027-10-10")
-    expect(await prisma.payment.count({ where: { serviceId: s0.id } })).toBe(1)
+    expect(await prisma.payment.count({ where: { subscriptionId: s0.id } })).toBe(1)
   })
 
   it("a client without email gets a WhatsApp row but no email row", async () => {
@@ -243,7 +247,9 @@ describe.skipIf(!enabled)("sending (docs/04 §5)", () => {
     expect(saved.attempts).toBe(1)
     expect(saved.lastError).toMatch(/ECONNREFUSED/)
     expect(res.ok ? "" : res.error).toBe(saved.lastError)
-    const n = await prisma.notification.findFirstOrThrow({ where: { type: "email_failed" } })
+    const n = await prisma.notification.findFirstOrThrow({
+      where: { type: "email_failed" },
+    })
     expect(n.title).toBe("Email to Client d3 failed")
   })
 
