@@ -69,7 +69,10 @@ export async function startSession(
 export async function currentSession(): Promise<(Session & { admin: Admin }) | null> {
   const token = (await cookies()).get(cookieName())?.value
   if (!token) return null
-  return prisma.session.findUnique({ where: { id: sha256(token) }, include: { admin: true } })
+  return prisma.session.findUnique({
+    where: { id: sha256(token) },
+    include: { admin: true },
+  })
 }
 
 /** Deletes the session row and, in actions, the cookie. */
@@ -84,7 +87,9 @@ export async function endSession(id?: string) {
 }
 
 function expired(session: Session, now: number) {
-  return session.expiresAt.getTime() < now || now - session.lastSeenAt.getTime() > IDLE_LIMIT
+  return (
+    session.expiresAt.getTime() < now || now - session.lastSeenAt.getTime() > IDLE_LIMIT
+  )
 }
 
 /**
@@ -98,19 +103,26 @@ export async function requireAdmin(): Promise<{ admin: Admin; session: Session }
     if (session) await prisma.session.deleteMany({ where: { id: session.id } })
     redirect(session ? "/login?expired=1" : "/login")
   }
-  // Touch at most once a minute to limit writes.
+  // Touch at most once a minute to limit writes. One plain UPDATE (no read
+  // back) guarded on the old value: the layout and the page call this in
+  // parallel, and MariaDB 11.8's snapshot isolation fails a transaction that
+  // writes a row another one just changed ("Record has changed since last
+  // read"). The touch only feeds the idle timeout, so it never fails a request.
   if (now - session.lastSeenAt.getTime() > MIN)
-    await prisma.session.update({
-      where: { id: session.id },
-      data: { lastSeenAt: new Date(now) },
-    })
+    await prisma.session
+      .updateMany({
+        where: { id: session.id, lastSeenAt: { lt: new Date(now - MIN) } },
+        data: { lastSeenAt: new Date(now) },
+      })
+      .catch((err) => console.error("session touch failed", err))
   return { admin: session.admin, session }
 }
 
 /** For /2fa* pages and actions: a live session that passed the password step. */
-export async function requirePasswordStage(): Promise<
-  { admin: Admin; session: Session } | null
-> {
+export async function requirePasswordStage(): Promise<{
+  admin: Admin
+  session: Session
+} | null> {
   const session = await currentSession()
   if (!session || session.stage !== "password_ok" || expired(session, Date.now()))
     return null
