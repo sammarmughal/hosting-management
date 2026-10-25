@@ -15,10 +15,12 @@ Admin 1 ─── * Session
 Admin 1 ─── * PasswordReset
 LoginAttempt (by identifier/ip, no FK)
 
-Client 1 ─── * Service 1 ─── * Payment
-                      1 ─── * Reminder
-                      1 ─── * Notification (nullable FK)
-Client 1 ─── * Invoice * ─── 1 Service
+Client 1 ─── * Company 1 ─── * Subscription      (a subscription's company is optional)
+Client 1 ─── * Subscription * ─── 1 ServiceType (the Service Catalog; RESTRICT on delete)
+               Subscription 1 ─── * Payment
+                            1 ─── * Reminder
+                            1 ─── * Notification (nullable FK)
+Client 1 ─── * Invoice * ─── 1 Subscription
                Invoice 1 ─── * InvoiceItem
                Invoice 1 ─── * InvoiceEvent
                Invoice 0..1 ─── 0..1 Payment
@@ -26,6 +28,8 @@ Client 1 ─── * Invoice * ─── 1 Service
 Setting (key/value)   MessageTemplate   AuditLog
 InvoiceCounter (one row per year)   AppLock (named lock rows)   RateLimit
 ```
+
+> **docs/14 (25 Oct 2026):** `services` became `subscriptions` (and every `service_id` became `subscription_id`), `clients.company` became the `companies` table, and `service_types` was added (migration `companies_subscriptions`, docs/14 §10). The listing in §2 below still shows the schema before that change; `prisma/schema.prisma` and docs/14 §1 are the current definition.
 
 ## 2. `prisma/schema.prisma`
 

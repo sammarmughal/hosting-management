@@ -184,6 +184,22 @@ Owner decision: the database moves from Neon Postgres to Hostinger's MySQL/Maria
 - [x] Tests: currency → account, Default fallback, duplicates, IBAN validation, snapshot/refresh/lock, migration, email, e2e settings form. Only made-up IBANs (bank code TEST / 000).
 - [x] PKR and AED invoice PDFs rendered and checked.
 
+## Companies and subscriptions (25 Oct 2026, docs/14)
+- [x] Spec `docs/14-COMPANIES-AND-SUBSCRIPTIONS.md`; 03, 07, 08 and 11 updated.
+- [x] Schema: `companies`, `service_types`, `services` → `subscriptions`, `service_id` → `subscription_id`, `clients.company` removed. One hand-written migration `companies_subscriptions` (renames keep rows; seeds the five service types; old company text becomes a company). No drift against the schema.
+- [x] Billing cycle in one place (`src/lib/domain/cycles.ts`, yearly only).
+- [x] Add client: customer info only. Client page tabs Overview, Companies, Subscriptions (grouped by company), Invoices, Payments.
+- [x] Companies: list with client filter and search, add/edit, delete with the counted confirmation.
+- [x] Service Catalog: add/edit dialog, active switch, delete blocked (tooltip + server + FK) while in use.
+- [x] Subscriptions: list with company and service filters, form with client → company → active service; server checks the company's client, the active type and duplicates (type + identifier). Old service URLs redirect.
+- [x] Sidebar in the client's order; bottom nav Dashboard · Subscriptions · Reminders · More; "+" and "N" per page.
+- [x] Invoices: bill-to company snapshot under the client (page, PDF, public page), Company column and filter, line "Service — identifier", Update from subscription refreshes the bill-to.
+- [x] Reminders to the client only; `{{company_name}}`, `{{company_line}}`, `{{service_name}}` (and `{company}` kept); defaults reworded; admin summary shows service and company; queue and log filter by company.
+- [x] CSV import/export for clients, companies and subscriptions (exports import back); payments and invoices exports gain company.
+- [x] `scripts/phpmyadmin-setup.mjs --only` for the update SQL; dry run on a copy of the live setup: up to date, no drift, data moved, a second import changes nothing.
+- [x] Tests: unit (validation, cycle, catalog guard, delete text, invoice line and bill-to, placeholders, imports, filters, nav, export columns, subject length), integration (server rules, cascade, FK, invoices, reminders, import, migration on a scratch database), e2e (companies-subscriptions incl. 360 px, updated invoice-flow, currency, ops).
+- [ ] Owner: delete the test client on production, back up, import `production-update-20261025120000_companies_subscriptions.sql`, then deploy.
+
 ---
 
 ## Phase 10 — Deploy + handover

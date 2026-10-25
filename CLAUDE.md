@@ -42,4 +42,4 @@ Next.js App Router · TypeScript strict · Tailwind + shadcn/ui + lucide-react �
 - When unsure about behaviour, check `docs/04-BUSINESS-LOGIC.md`. If it isn't covered there, ask.
 
 ## Current phase
-**Phase 1 — UI with mock data** (`docs/06-UI-SPEC.md` §4, §5 and §7). Components must use the view-model types in `src/types/view.ts`, so the mock data can later be swapped for Prisma without UI changes.
+**Companies, Service Catalog and Subscriptions** (`docs/14-COMPANIES-AND-SUBSCRIPTIONS.md`, 25 Oct 2026). "Service" in older docs means "subscription"; the catalog's entries are service types. Components keep using the view-model types in `src/types/view.ts`.

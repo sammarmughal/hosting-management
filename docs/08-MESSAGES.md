@@ -5,8 +5,11 @@
 | Placeholder | Example | Available in |
 |-------------|---------|--------------|
 | `{client_name}` | Ali Khan | client templates |
-| `{company}` | Khan Traders | client templates |
-| `{domain}` | clientb.pk | client templates |
+| `{{company_name}}` | Khan Traders | client and invoice templates; empty without a company (docs/14 §6) |
+| `{company}` | Khan Traders | the older name of `{{company_name}}`, still works |
+| `{{company_line}}` | " (Khan Traders)" or empty | client and invoice templates; goes straight after the domain |
+| `{{service_name}}` | Web Hosting | client and invoice templates: the Service Catalog name |
+| `{domain}` | clientb.pk | client templates (the domain or other identifier) |
 | `{renewal_date}` | 30 Sep 2026 | client templates |
 | `{days_left}` | 7 | client templates (absolute number) |
 | `{days_text}` | "in 7 days" / "today" / "3 days ago" | client templates |
