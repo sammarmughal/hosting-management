@@ -24,6 +24,7 @@ import { TimerPill } from "@/components/timer-pill"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { FilterSelect } from "@/components/filters/filter-select"
 import { formatDatePK } from "@/lib/domain/dates"
 import { formatMoney } from "@/lib/domain/money"
 import { formatDateTimePK, formatSentAt } from "@/lib/domain/relative-time"
@@ -43,7 +44,12 @@ import { openWhatsApp } from "@/lib/open-whatsapp"
 import { InvoiceChip } from "@/components/invoices/invoice-status-badge"
 import { useInvoiceDialogs } from "@/components/invoices/use-invoice-dialogs"
 import { cn } from "@/lib/utils"
-import type { Colour, InvoiceChip as InvoiceChipData, QueueItem, ReminderRow } from "@/types/view"
+import type {
+  Colour,
+  InvoiceChip as InvoiceChipData,
+  QueueItem,
+  ReminderRow,
+} from "@/types/view"
 
 const BAR: Record<Colour, string> = {
   green: "bg-green",
@@ -58,7 +64,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
 /** The email row can be sent now, or why not. */
 function emailChannel(item: QueueItem): { ready: true } | { ready: false; why: string } {
-  if (!item.service.email) return { ready: false, why: "no email address" }
+  if (!item.subscription.email) return { ready: false, why: "no email address" }
   const row = item.email
   if (!row) return { ready: false, why: "no email queued" }
   if (row.status === "sent") return { ready: false, why: "email already sent" }
@@ -71,7 +77,7 @@ function whatsappChannel(
   item: QueueItem
 ): { ready: true; url: string } | { ready: false; why: string } {
   const row = item.whatsapp
-  const url = row?.waLink ?? item.service.waLink
+  const url = row?.waLink ?? item.subscription.waLink
   if (!url) return { ready: false, why: "no valid WhatsApp number" }
   if (row?.status === "sent") return { ready: false, why: "WhatsApp already sent" }
   if (row?.status === "opened") return { ready: false, why: "WhatsApp already opened" }
@@ -101,6 +107,8 @@ export function ReminderQueue({
   const invoiceDialogs = useInvoiceDialogs()
   const [renewing, setRenewing] = React.useState<QueueItem | null>(null)
   const [renewOpen, setRenewOpen] = React.useState(false)
+  // docs/14 §7: narrow the queue to one company ("" = all).
+  const [companyFilter, setCompanyFilter] = React.useState("")
 
   const toggle = (set: ReadonlySet<string>, id: string, on: boolean) => {
     const next = new Set(set)
@@ -121,14 +129,27 @@ export function ReminderQueue({
     )
   }, [])
 
-  const recipients: EmailRecipient[] = items.flatMap((q) =>
-    q.email && q.service.email && OPEN.includes(q.email.status)
+  const companies = [
+    ...new Map(
+      items.flatMap((q) =>
+        q.subscription.companyId && q.subscription.company
+          ? [[q.subscription.companyId, q.subscription.company] as const]
+          : []
+      )
+    ),
+  ].map(([id, name]) => ({ value: String(id), label: name }))
+  const shown = companyFilter
+    ? items.filter((q) => String(q.subscription.companyId ?? "") === companyFilter)
+    : items
+
+  const recipients: EmailRecipient[] = shown.flatMap((q) =>
+    q.email && q.subscription.email && OPEN.includes(q.email.status)
       ? [
           {
             id: q.email.id,
-            name: q.service.clientName,
-            email: q.service.email,
-            domain: q.service.domain,
+            name: q.subscription.clientName,
+            email: q.subscription.email,
+            domain: q.subscription.domain,
           },
         ]
       : []
@@ -142,11 +163,13 @@ export function ReminderQueue({
     setSending((s) => toggle(s, row.id, false))
     if (res.ok && res.data) {
       patchRow(row.id, { status: "sent", sentAt: res.data.sentAt, lastError: null })
-      toast.success(`Email sent to ${item.service.clientName}`)
+      toast.success(`Email sent to ${item.subscription.clientName}`)
     } else {
       const error = res.ok ? "Email failed" : res.error
       patchRow(row.id, { status: "failed", lastError: error })
-      toast.error(`Couldn't email ${item.service.clientName}`, { description: error })
+      toast.error(`Couldn't email ${item.subscription.clientName}`, {
+        description: error,
+      })
     }
   }
 
@@ -170,12 +193,13 @@ export function ReminderQueue({
     const emailRow = email.ready ? item.email : null
     if (waRow) patchRow(waRow.id, { status: "opened", sentAt: new Date().toISOString() })
     if (emailRow) setSending((s) => toggle(s, emailRow.id, true))
-    const name = item.service.clientName
+    const name = item.subscription.clientName
     const blocked = wa.ready && !waOpened
     const blockedNote = "The browser blocked WhatsApp. Allow pop-ups for this site."
 
     if (!emailRow && !waRow) {
-      if (blocked) toast.error(`Couldn't open WhatsApp for ${name}`, { description: blockedNote })
+      if (blocked)
+        toast.error(`Couldn't open WhatsApp for ${name}`, { description: blockedNote })
       return
     }
     void attemptAction(() =>
@@ -186,7 +210,11 @@ export function ReminderQueue({
     ).then((res) => {
       if (emailRow) setSending((s) => toggle(s, emailRow.id, false))
       if (!res.ok || !res.data) {
-        if (emailRow) patchRow(emailRow.id, { status: "failed", lastError: res.ok ? null : res.error })
+        if (emailRow)
+          patchRow(emailRow.id, {
+            status: "failed",
+            lastError: res.ok ? null : res.error,
+          })
         toast.error(`Couldn't send the reminders for ${name}`, {
           description: res.ok ? undefined : res.error,
         })
@@ -195,7 +223,8 @@ export function ReminderQueue({
       const r = res.data.email
       if (emailRow && r?.ok)
         patchRow(emailRow.id, { status: "sent", sentAt: r.sentAt, lastError: null })
-      if (emailRow && r && !r.ok) patchRow(emailRow.id, { status: "failed", lastError: r.error })
+      if (emailRow && r && !r.ok)
+        patchRow(emailRow.id, { status: "failed", lastError: r.error })
 
       const emailFailed = !!emailRow && !!r && !r.ok
       const parts = [
@@ -205,20 +234,25 @@ export function ReminderQueue({
       if (emailFailed || blocked) {
         toast.error(
           parts.length
-            ? `${parts.join(", ")} for ${name}, but ${emailFailed ? "the email failed" : "WhatsApp was blocked"}`.replace(/^./, (c) => c.toUpperCase())
+            ? `${parts.join(", ")} for ${name}, but ${emailFailed ? "the email failed" : "WhatsApp was blocked"}`.replace(
+                /^./,
+                (c) => c.toUpperCase()
+              )
             : `Couldn't send the reminders for ${name}`,
           { description: emailFailed && r && !r.ok ? r.error : blockedNote }
         )
       } else {
         toast.success(
           `${parts.join(" and ")} for ${name}`.replace(/^./, (c) => c.toUpperCase()),
-          waRow ? { description: "Press Send in WhatsApp, then Mark as sent." } : undefined
+          waRow
+            ? { description: "Press Send in WhatsApp, then Mark as sent." }
+            : undefined
         )
       }
     })
   }
 
-  const waSteps: WhatsAppStep[] = items.flatMap((item) => {
+  const waSteps: WhatsAppStep[] = shown.flatMap((item) => {
     const wa = whatsappChannel(item)
     return wa.ready ? [{ item, url: wa.url }] : []
   })
@@ -251,19 +285,21 @@ export function ReminderQueue({
     const ids = [item.email, item.whatsapp]
       .filter((r): r is ReminderRow => !!r && r.status !== "sent")
       .map((r) => r.id)
-    setItems((prev) => prev.filter((q) => q.service.id !== item.service.id))
+    setItems((prev) => prev.filter((q) => q.subscription.id !== item.subscription.id))
 
     // Commit only if the toast closes without Undo, so Undo needs no extra action.
     let settled = false
     const commit = () => {
       if (settled) return
       settled = true
-      void Promise.all(ids.map((id) => attemptAction(() => skipReminderAction(id)))).then((results) => {
-        if (results.some((r) => !r.ok))
-          toast.error("Couldn't skip the reminder. Try again.")
-      })
+      void Promise.all(ids.map((id) => attemptAction(() => skipReminderAction(id)))).then(
+        (results) => {
+          if (results.some((r) => !r.ok))
+            toast.error("Couldn't skip the reminder. Try again.")
+        }
+      )
     }
-    toast(`Reminder skipped for ${item.service.domain}`, {
+    toast(`Reminder skipped for ${item.subscription.domain}`, {
       action: {
         label: "Undo",
         onClick: () => {
@@ -271,7 +307,8 @@ export function ReminderQueue({
           setItems((prev) =>
             [...prev, item].sort(
               (a, b) =>
-                a.service.daysLeft - b.service.daysLeft || a.service.id - b.service.id
+                a.subscription.daysLeft - b.subscription.daysLeft ||
+                a.subscription.id - b.subscription.id
             )
           )
         },
@@ -281,7 +318,7 @@ export function ReminderQueue({
     })
   }
 
-  const count = items.length
+  const count = shown.length
 
   return (
     <section
@@ -291,11 +328,21 @@ export function ReminderQueue({
       <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <h2 id="queue-title" className="flex items-center gap-2 text-base font-semibold">
           Reminders due
-          <Badge size="sm" aria-label={`${count} services`}>
+          <Badge size="sm" aria-label={`${count} subscriptions`}>
             {count}
           </Badge>
         </h2>
         <div className="flex flex-wrap gap-2">
+          {companies.length > 0 && (
+            <FilterSelect
+              label="Company"
+              value={companyFilter}
+              onChange={setCompanyFilter}
+              anyLabel="All"
+              options={companies}
+              className="flex-1 max-sm:basis-full sm:w-52 sm:flex-none"
+            />
+          )}
           {recipients.length > 0 ? (
             <Button
               className="flex-1 max-sm:h-11 max-sm:basis-full sm:flex-none"
@@ -355,13 +402,17 @@ export function ReminderQueue({
       {count === 0 ? (
         <EmptyState
           icon={CalendarCheck2Icon}
-          message="All caught up. No reminders due."
+          message={
+            companyFilter
+              ? "No reminders due for this company."
+              : "All caught up. No reminders due."
+          }
         />
       ) : (
         <ul className="divide-y divide-border">
-          {items.map((item) => (
+          {shown.map((item) => (
             <QueueRow
-              key={item.service.id}
+              key={item.subscription.id}
               item={item}
               emailSending={!!item.email && sending.has(item.email.id)}
               busyIds={busy}
@@ -406,12 +457,12 @@ export function ReminderQueue({
       />
 
       <RenewDialog
-        service={renewing?.service ?? null}
+        subscription={renewing?.subscription ?? null}
         open={renewOpen}
         onOpenChange={setRenewOpen}
-        onRenewed={(serviceId) =>
-          // A renewed service leaves the queue (its reminders are skipped, docs/04 §6).
-          setItems((prev) => prev.filter((q) => q.service.id !== serviceId))
+        onRenewed={(subscriptionId) =>
+          // A renewed subscription leaves the queue (its reminders are skipped, docs/04 §6).
+          setItems((prev) => prev.filter((q) => q.subscription.id !== subscriptionId))
         }
       />
     </section>
@@ -443,17 +494,18 @@ function QueueRow({
   onShareInvoice: (invoice: InvoiceChipData) => void
   onRenew: () => void
 }) {
-  const s = item.service
+  const s = item.subscription
   const email = emailChannel(item)
   const wa = whatsappChannel(item)
   // A channel that can't go out says why (docs/12 §8).
-  const reason = !email.ready && !wa.ready
-    ? `Nothing to send: ${email.why} and ${wa.why}`
-    : !email.ready
-      ? `Opens WhatsApp only: ${email.why}`
-      : !wa.ready
-        ? `Sends the email only: ${wa.why}`
-        : null
+  const reason =
+    !email.ready && !wa.ready
+      ? `Nothing to send: ${email.why} and ${wa.why}`
+      : !email.ready
+        ? `Opens WhatsApp only: ${email.why}`
+        : !wa.ready
+          ? `Sends the email only: ${wa.why}`
+          : null
   const sendBoth = (
     <Button
       size="sm"
@@ -484,6 +536,10 @@ function QueueRow({
                 {s.domain}
               </Link>
               <span className="text-ink-muted"> · {s.clientName}</span>
+            </p>
+            <p className="truncate text-sm text-ink-muted">
+              {s.serviceName}
+              {s.company && ` · ${s.company}`}
             </p>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               <p className="text-sm text-ink-muted">Stage: {stageLabel(item.stage)}</p>
@@ -633,7 +689,7 @@ function EmailState({
   onRetry: () => void
 }) {
   const row = item.email
-  if (!item.service.email) {
+  if (!item.subscription.email) {
     return (
       <Unavailable reason="No email address for this client">
         <Chip tone="muted">No email</Chip>
@@ -691,7 +747,7 @@ function WhatsAppState({
   onMarkSent: (row: ReminderRow) => void
 }) {
   const row = item.whatsapp
-  const link = row?.waLink ?? item.service.waLink
+  const link = row?.waLink ?? item.subscription.waLink
 
   if (!link) {
     return (

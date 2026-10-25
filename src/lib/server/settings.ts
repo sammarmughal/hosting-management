@@ -122,7 +122,9 @@ export const getAppSettings = cache(async (): Promise<AppSettings> => {
       fromName: get("mail_from_name"),
     },
     invoices: {
-      prefix: /^[A-Z0-9]{1,10}$/.test(get("invoice_prefix")) ? get("invoice_prefix") : "INV",
+      prefix: /^[A-Z0-9]{1,10}$/.test(get("invoice_prefix"))
+        ? get("invoice_prefix")
+        : "INV",
       leadDays: Math.min(120, Math.max(1, int(get("invoice_lead_days"), 30))),
       address: get("business_address"),
       ntn: get("invoice_ntn"),
@@ -194,7 +196,10 @@ export async function getPreferences(): Promise<Preferences> {
     address: s.invoices.address,
     ntn: s.invoices.ntn,
     // Stored without spaces; the form shows groups of four (the save strips them).
-    accounts: s.invoices.accounts.map((a) => ({ ...a, iban: a.iban ? formatIban(a.iban) : "" })),
+    accounts: s.invoices.accounts.map((a) => ({
+      ...a,
+      iban: a.iban ? formatIban(a.iban) : "",
+    })),
     wallet: s.invoices.wallet,
     footer: s.invoices.footer,
     taxEnabled: s.invoices.taxEnabled,
@@ -205,27 +210,34 @@ export async function getPreferences(): Promise<Preferences> {
     (Object.keys(DEFAULT_TEMPLATES) as TemplateKey[]).map((k) => {
       const row = byKey.get(k)
       const def = DEFAULT_TEMPLATES[k]
-      return [k, { subject: row?.subject ?? def.subject ?? "", body: row?.body ?? def.body }]
+      return [
+        k,
+        { subject: row?.subject ?? def.subject ?? "", body: row?.body ?? def.body },
+      ]
     })
   ) as Preferences["templates"]
   return { business, reminders, email, invoices, templates }
 }
 
 /**
- * How many clients and services use each currency. A currency in use can't
+ * How many clients and subscriptions use each currency. A currency in use can't
  * be turned off (docs/13 §6), so Settings and savePreferencesAction both read this.
  */
 export async function getCurrencyUsage(
   db: Tx | typeof prisma = prisma
 ): Promise<Record<string, CurrencyUse>> {
-  const [clients, services] = await Promise.all([
+  const [clients, subs] = await Promise.all([
     db.client.groupBy({ by: ["currency"], _count: { _all: true } }),
-    db.service.groupBy({ by: ["currency"], _count: { _all: true } }),
+    db.subscription.groupBy({ by: ["currency"], _count: { _all: true } }),
   ])
   const usage: Record<string, CurrencyUse> = {}
-  for (const c of clients) usage[c.currency] = { clients: c._count._all, services: 0 }
-  for (const s of services)
-    usage[s.currency] = { clients: usage[s.currency]?.clients ?? 0, services: s._count._all }
+  for (const c of clients)
+    usage[c.currency] = { clients: c._count._all, subscriptions: 0 }
+  for (const s of subs)
+    usage[s.currency] = {
+      clients: usage[s.currency]?.clients ?? 0,
+      subscriptions: s._count._all,
+    }
   return usage
 }
 

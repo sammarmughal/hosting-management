@@ -9,7 +9,7 @@ import { ReminderLogTable } from "@/components/reminder-log-table"
 import { ReminderQueue } from "@/components/reminder-queue/reminder-queue"
 import { ReminderLogToolbar } from "@/components/reminders/reminder-log-toolbar"
 import { Button } from "@/components/ui/button"
-import { getReminderQueue, listReminderLog } from "@/lib/data"
+import { companyOptions, getReminderQueue, listReminderLog } from "@/lib/data"
 import { isFiltered, parseReminderLogParams } from "@/lib/list-filters"
 import { hrefWith } from "@/lib/url"
 
@@ -22,7 +22,11 @@ export default async function RemindersPage({ searchParams }: Props) {
   const sp = await searchParams
   const tab = sp.tab === "log" ? "log" : "queue"
   const params = parseReminderLogParams(sp)
-  const [queue, log] = await Promise.all([getReminderQueue(), listReminderLog(params)])
+  const [queue, log, companies] = await Promise.all([
+    getReminderQueue(),
+    listReminderLog(params),
+    companyOptions(),
+  ])
 
   return (
     <div className="flex flex-col gap-6">
@@ -59,7 +63,7 @@ export default async function RemindersPage({ searchParams }: Props) {
         </div>
       ) : (
         <>
-          <ReminderLogToolbar params={params} />
+          <ReminderLogToolbar params={params} companies={companies} />
           <section
             aria-label="Reminder log"
             className="overflow-hidden rounded-lg border border-border bg-surface"

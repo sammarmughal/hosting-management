@@ -8,6 +8,7 @@ import { SearchField } from "@/components/filters/search-field"
 import { useUrlParams } from "@/components/filters/use-url-params"
 import type { InvoiceFilter, InvoiceParams } from "@/lib/list-filters"
 import { cn } from "@/lib/utils"
+import type { Option } from "@/types/view"
 
 const STATUSES: { value: InvoiceFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -21,9 +22,12 @@ const STATUSES: { value: InvoiceFilter; label: string }[] = [
 export function InvoicesToolbar({
   params,
   currencies,
+  companies,
 }: {
   params: InvoiceParams
   currencies: string[]
+  /** docs/14 §8: filter by the subscription's company. */
+  companies: Option[]
 }) {
   const { update, pending } = useUrlParams()
   const onSearch = React.useCallback((q: string) => update({ q }), [update])
@@ -47,7 +51,9 @@ export function InvoicesToolbar({
                 onClick={() => update({ status: s.value === "all" ? null : s.value })}
                 className={cn(
                   "inline-flex h-8 items-center rounded-sm px-2.5 text-sm whitespace-nowrap transition-colors duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/40 max-md:h-11",
-                  active ? "bg-surface font-medium text-ink shadow-xs" : "text-ink-muted hover:text-ink"
+                  active
+                    ? "bg-surface font-medium text-ink shadow-xs"
+                    : "text-ink-muted hover:text-ink"
                 )}
               >
                 {s.label}
@@ -66,6 +72,16 @@ export function InvoicesToolbar({
           className="flex-1 lg:max-w-sm"
         />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:ml-auto">
+          {companies.length > 0 && (
+            <FilterSelect
+              label="Company"
+              value={params.company ? String(params.company) : ""}
+              onChange={(company) => update({ company })}
+              anyLabel="All"
+              options={companies.map((c) => ({ value: String(c.id), label: c.label }))}
+              className="sm:w-52"
+            />
+          )}
           {currencies.length > 1 && (
             <FilterSelect
               label="Currency"
@@ -76,7 +92,11 @@ export function InvoicesToolbar({
               className="sm:w-40"
             />
           )}
-          <DateRangeFilter from={params.from} to={params.to} onChange={(range) => update(range)} />
+          <DateRangeFilter
+            from={params.from}
+            to={params.to}
+            onChange={(range) => update(range)}
+          />
         </div>
       </div>
     </div>

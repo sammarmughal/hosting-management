@@ -3,7 +3,7 @@ import Link from "next/link"
 
 import { CheckNow } from "@/components/dashboard/check-now"
 import { ReminderQueue } from "@/components/reminder-queue/reminder-queue"
-import { ServicesTable } from "@/components/services-table"
+import { SubscriptionsTable } from "@/components/subscriptions-table"
 import { MoneyValue, StatCard } from "@/components/stat-card"
 import { formatAmount } from "@/lib/domain/money"
 import { formatRelative } from "@/lib/domain/relative-time"
@@ -62,17 +62,17 @@ export default async function DashboardPage() {
         className="grid grid-cols-2 gap-3 md:grid-cols-6 md:gap-4 xl:grid-cols-5"
       >
         <StatCard
-          label="Active services"
+          label="Active subscriptions"
           value={stats.active}
           dot="green"
-          href="/clients?filter=active"
+          href="/subscriptions?filter=active"
           className={cn(SPAN_3)}
         />
         <StatCard
           label={`Expiring in ${t.orange} days`}
           value={stats.expiring30}
           dot="orange"
-          href="/clients?filter=soon"
+          href="/subscriptions?filter=soon"
           className={cn(SPAN_3)}
         />
         <StatCard
@@ -84,7 +84,7 @@ export default async function DashboardPage() {
               : undefined
           }
           dot="red"
-          href="/clients?filter=red"
+          href="/subscriptions?filter=red"
           className={cn(SPAN_3)}
         />
         <StatCard
@@ -94,7 +94,7 @@ export default async function DashboardPage() {
             oldestExpired < 0 ? `Oldest ${plural(-oldestExpired, "day")} ago` : undefined
           }
           dot="expired"
-          href="/clients?filter=expired"
+          href="/subscriptions?filter=expired"
           className={cn(SPAN_2)}
         />
         <StatCard
@@ -103,12 +103,15 @@ export default async function DashboardPage() {
             <span className="flex flex-col">
               {expected.map((e) => (
                 <span key={e.currency} className="truncate">
-                  <MoneyValue currency={e.currency} amount={formatAmount(e.total, e.currency)} />
+                  <MoneyValue
+                    currency={e.currency}
+                    amount={formatAmount(e.total, e.currency)}
+                  />
                 </span>
               ))}
             </span>
           }
-          href="/clients?filter=soon"
+          href="/subscriptions?filter=soon"
           className={cn(SPAN_2, "col-span-2")}
         />
       </section>
@@ -133,14 +136,14 @@ export default async function DashboardPage() {
             <p className="text-sm text-ink-muted">30 days or less, and expired</p>
           </div>
           <Link
-            href="/clients?filter=due"
+            href="/subscriptions?filter=due"
             className="shrink-0 rounded-sm text-sm font-medium text-brand-700 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/40"
           >
             View all
           </Link>
         </div>
         {dueSoon.length ? (
-          <ServicesTable rows={dueSoon} />
+          <SubscriptionsTable rows={dueSoon} />
         ) : (
           <p className="px-5 py-8 text-sm text-ink-muted">
             Nothing due in the next 30 days.

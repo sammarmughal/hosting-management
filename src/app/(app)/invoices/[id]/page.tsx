@@ -31,14 +31,15 @@ export default async function InvoicePage({ params }: Props) {
         title={<span className="font-mono">{invoice.number}</span>}
         description={
           <>
-            {invoice.service.domain} ·{" "}
+            {invoice.subscription.serviceName} · {invoice.subscription.domain} ·{" "}
             <Link
-              href={`/clients/${invoice.service.clientId}`}
+              href={`/clients/${invoice.subscription.clientId}`}
               data-slot="inline-link"
               className="hover:underline"
             >
               {invoice.billTo.name}
             </Link>
+            {invoice.billTo.company && <> · {invoice.billTo.company.name}</>}
           </>
         }
       />

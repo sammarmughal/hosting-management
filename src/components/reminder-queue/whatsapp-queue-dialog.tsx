@@ -104,7 +104,7 @@ function QueueFlow({
     )
   }
 
-  const s = step.item.service
+  const s = step.item.subscription
   return (
     <>
       <DialogHeader>
@@ -128,7 +128,10 @@ function QueueFlow({
         />
       </div>
 
-      <div className="grid gap-1 rounded-md border border-border px-3 py-3" aria-live="polite">
+      <div
+        className="grid gap-1 rounded-md border border-border px-3 py-3"
+        aria-live="polite"
+      >
         <div className="flex items-baseline justify-between gap-3">
           <span className="truncate text-base font-medium">{s.clientName}</span>
           <span className="shrink-0 text-sm text-ink-muted">

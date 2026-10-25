@@ -3,9 +3,9 @@
 import type { Colour } from "@/types/view"
 
 export interface Thresholds {
-  /** T_o: at or below this many days the service is orange. */
+  /** T_o: at or below this many days the subscription is orange. */
   orange: number
-  /** T_r: at or below this many days (and ≥ 0) the service is red. */
+  /** T_r: at or below this many days (and ≥ 0) the subscription is red. */
   red: number
 }
 
@@ -23,8 +23,8 @@ export function statusColour(
   return "green"
 }
 
-/** Cancelled services have no timer colour. */
-export function serviceColour(
+/** Cancelled subscriptions have no timer colour. */
+export function subscriptionColour(
   days: number,
   status: "active" | "cancelled",
   t: Thresholds = DEFAULT_THRESHOLDS

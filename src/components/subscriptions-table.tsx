@@ -28,32 +28,34 @@ import { formatDatePK } from "@/lib/domain/dates"
 import { formatMoney } from "@/lib/domain/money"
 import { formatPhone } from "@/lib/domain/whatsapp"
 import { cn } from "@/lib/utils"
-import type { ServiceRow } from "@/types/view"
+import type { SubscriptionRow } from "@/types/view"
 
 /** The second line of the client cell: company, else email, else phone. */
-function clientDetail(s: ServiceRow) {
+function clientDetail(s: SubscriptionRow) {
   return s.company ?? s.email ?? (s.phone ? formatPhone(s.phone) : null)
 }
 
-const clientHref = (s: ServiceRow) => `/clients/${s.clientId}`
+/** The subscription on its client's page (docs/14 §7). */
+const clientHref = (s: SubscriptionRow) =>
+  `/clients/${s.clientId}?tab=subscriptions#sub-${s.id}`
 
 /**
- * One row per service (docs/06 §4.4–4.5, docs/12 §5): a table from md up,
+ * One row per subscription (docs/06 §4.4–4.5, docs/12 §5, docs/14 §4): a table from md up,
  * cards on mobile. Rows link to the client; actions live in a ⋯ menu.
  */
-export function ServicesTable({
+export function SubscriptionsTable({
   rows,
   showStartDate = false,
 }: {
-  rows: ServiceRow[]
-  /** The Clients list shows the start date too (docs/06 §4.5), from xl up. */
+  rows: SubscriptionRow[]
+  /** The Subscriptions list shows the start date too (docs/06 §4.5), from xl up. */
   showStartDate?: boolean
 }) {
   const router = useRouter()
-  const [renewing, setRenewing] = React.useState<ServiceRow | null>(null)
+  const [renewing, setRenewing] = React.useState<SubscriptionRow | null>(null)
   const [renewOpen, setRenewOpen] = React.useState(false)
 
-  function openRenew(s: ServiceRow) {
+  function openRenew(s: SubscriptionRow) {
     setRenewing(s)
     setRenewOpen(true)
   }
@@ -65,8 +67,8 @@ export function ServicesTable({
         <Table className="min-w-[800px] table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[28%]">Client</TableHead>
-              <TableHead className="w-[22%]">Domain</TableHead>
+              <TableHead className="w-[28%]">Client · company</TableHead>
+              <TableHead className="w-[22%]">Domain · service</TableHead>
               {showStartDate && (
                 <TableHead className="hidden w-30 xl:table-cell">Start date</TableHead>
               )}
@@ -109,6 +111,9 @@ export function ServicesTable({
                   <div className="truncate" title={s.domain}>
                     {s.domain}
                   </div>
+                  <div className="truncate text-xs text-ink-muted" title={s.serviceName}>
+                    {s.serviceName}
+                  </div>
                 </TableCell>
                 {showStartDate && (
                   <TableCell className="hidden text-ink-muted xl:table-cell">
@@ -125,7 +130,7 @@ export function ServicesTable({
                   <TimerPill renewalDate={s.renewalDate} status={s.status} />
                 </TableCell>
                 <TableCell className="text-right">
-                  <RowActions service={s} onRenew={openRenew} />
+                  <RowActions subscription={s} onRenew={openRenew} />
                 </TableCell>
               </TableRow>
             ))}
@@ -146,9 +151,16 @@ export function ServicesTable({
                 >
                   {s.clientName}
                 </Link>
-                <div title={s.domain} className="truncate text-sm text-ink-muted">{s.domain}</div>
+                <div title={s.domain} className="truncate text-sm text-ink-muted">
+                  {s.domain} · {s.serviceName}
+                </div>
+                {s.company && (
+                  <div title={s.company} className="truncate text-sm text-ink-muted">
+                    {s.company}
+                  </div>
+                )}
               </div>
-              <RowActions service={s} onRenew={openRenew} touch />
+              <RowActions subscription={s} onRenew={openRenew} touch />
             </div>
             <div className="mt-1 text-sm text-ink-muted">
               Renews {formatDatePK(s.renewalDate)} ·{" "}
@@ -159,7 +171,7 @@ export function ServicesTable({
             </div>
             {s.status === "active" && (
               <div className="mt-3 flex gap-2">
-                <WhatsAppButton service={s} className="h-11 flex-1" />
+                <WhatsAppButton subscription={s} className="h-11 flex-1" />
                 <Button
                   variant="outline"
                   className="h-11 flex-1"
@@ -173,17 +185,17 @@ export function ServicesTable({
         ))}
       </ul>
 
-      <RenewDialog service={renewing} open={renewOpen} onOpenChange={setRenewOpen} />
+      <RenewDialog subscription={renewing} open={renewOpen} onOpenChange={setRenewOpen} />
     </div>
   )
 }
 
 /** Opens the prebuilt wa.me link; disabled with a reason when there is no valid phone. */
 function WhatsAppButton({
-  service,
+  subscription: service,
   className,
 }: {
-  service: ServiceRow
+  subscription: SubscriptionRow
   className?: string
 }) {
   if (!service.waLink) {
@@ -212,12 +224,12 @@ function WhatsAppButton({
 }
 
 function RowActions({
-  service,
+  subscription: service,
   onRenew,
   touch = false,
 }: {
-  service: ServiceRow
-  onRenew: (s: ServiceRow) => void
+  subscription: SubscriptionRow
+  onRenew: (s: SubscriptionRow) => void
   touch?: boolean
 }) {
   return (
@@ -249,7 +261,7 @@ function RowActions({
           <Link href={clientHref(service)}>View client</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href={`/services/${service.id}/edit`}>Edit service</Link>
+          <Link href={`/subscriptions/${service.id}/edit`}>Edit subscription</Link>
         </DropdownMenuItem>
         {service.status === "active" && (
           <DropdownMenuItem onSelect={() => onRenew(service)}>Renew</DropdownMenuItem>

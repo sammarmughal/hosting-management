@@ -11,19 +11,21 @@ import {
 } from "@/lib/domain/messages"
 import { publicInvoiceUrl } from "@/lib/server/invoices"
 import { MONEY_SCALE } from "@/lib/domain/money"
-import { serviceColour } from "@/lib/domain/status"
+import { subscriptionColour } from "@/lib/domain/status"
 import { linkProvider } from "@/lib/domain/whatsapp"
 import { today as clockToday } from "@/lib/server/clock"
 import { fromDbDate } from "@/lib/server/db-dates"
 import { getAppSettings, getTemplate } from "@/lib/server/settings"
-import type { ReminderRow, ServiceRow } from "@/types/view"
+import type { ReminderRow, SubscriptionRow } from "@/types/view"
 
 // Prisma rows → the view models in src/types/view.ts (docs/06 §7.1), so the
 // components are the same as in the Phase 1 mock UI.
 
-export const serviceInclude = {
+export const subscriptionInclude = {
   client: true,
-  // The current cycle's invoice is picked from these in toServiceRow.
+  company: { select: { id: true, name: true } },
+  serviceType: { select: { name: true } },
+  // The current cycle's invoice is picked from these in toSubscriptionRow.
   invoices: {
     where: { status: { not: "void" } },
     orderBy: { periodStart: "desc" },
@@ -39,8 +41,10 @@ export const serviceInclude = {
       publicToken: true,
     },
   },
-} satisfies Prisma.ServiceInclude
-export type ServiceWithClient = Prisma.ServiceGetPayload<{ include: typeof serviceInclude }>
+} satisfies Prisma.SubscriptionInclude
+export type SubscriptionWithClient = Prisma.SubscriptionGetPayload<{
+  include: typeof subscriptionInclude
+}>
 
 export interface ViewContext {
   today: ISODate
@@ -67,14 +71,20 @@ export async function viewContext(): Promise<ViewContext> {
   }
 }
 
-export function toServiceRow(s: ServiceWithClient, ctx: ViewContext): ServiceRow {
+export function toSubscriptionRow(
+  s: SubscriptionWithClient,
+  ctx: ViewContext
+): SubscriptionRow {
   const renewalDate = fromDbDate(s.renewalDate)
   const left = daysLeft(renewalDate, ctx.today)
-  const row: ServiceRow = {
+  const row: SubscriptionRow = {
     id: s.id,
     clientId: s.clientId,
     clientName: s.client.name,
-    company: s.client.company,
+    companyId: s.companyId,
+    company: s.company?.name ?? null,
+    serviceTypeId: s.serviceTypeId,
+    serviceName: s.serviceType.name,
     email: s.client.email,
     phone: s.client.phone,
     address: s.client.address,
@@ -88,7 +98,7 @@ export function toServiceRow(s: ServiceWithClient, ctx: ViewContext): ServiceRow
     status: s.status,
     remindersEnabled: s.remindersEnabled,
     daysLeft: left,
-    colour: serviceColour(left, s.status, ctx.thresholds),
+    colour: subscriptionColour(left, s.status, ctx.thresholds),
     notes: s.notes,
   }
   const inv = s.invoices.find((i) => i.periodStart.getTime() === s.renewalDate.getTime())
@@ -107,12 +117,18 @@ export function toServiceRow(s: ServiceWithClient, ctx: ViewContext): ServiceRow
   row.waLink =
     linkProvider.prepare({
       to: s.client.phone,
-      text: clientWhatsappText(ctx.whatsappTemplate, row, ctx.business, ctx.today, invoice),
+      text: clientWhatsappText(
+        ctx.whatsappTemplate,
+        row,
+        ctx.business,
+        ctx.today,
+        invoice
+      ),
     })?.url ?? null
   return row
 }
 
-type InvoiceLink = ServiceWithClient["invoices"][number]
+type InvoiceLink = SubscriptionWithClient["invoices"][number]
 
 /** The cycle's invoice for message placeholders. */
 export function messageInvoice(inv: InvoiceLink): MessageInvoice {
@@ -127,17 +143,20 @@ export function messageInvoice(inv: InvoiceLink): MessageInvoice {
 
 type ReminderRecord = Prisma.ReminderGetPayload<object>
 
-export function toReminderRow(r: ReminderRecord, service: ServiceRow): ReminderRow {
+export function toReminderRow(
+  r: ReminderRecord,
+  subscription: SubscriptionRow
+): ReminderRow {
   return {
     id: r.id.toString(),
-    serviceId: r.serviceId,
+    subscriptionId: r.subscriptionId,
     stage: r.stage,
     channel: r.channel,
     recipient: r.recipient,
     status: r.status,
     lastError: r.lastError,
     sentAt: r.sentAt?.toISOString() ?? null,
-    waLink: r.channel === "whatsapp" ? (service.waLink ?? null) : null,
-    service,
+    waLink: r.channel === "whatsapp" ? (subscription.waLink ?? null) : null,
+    subscription,
   }
 }

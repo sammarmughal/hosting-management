@@ -30,21 +30,25 @@ export async function getPendingEmailIdsAction(): Promise<
 > {
   await requireAdmin()
   const rows = await prisma.reminder.findMany({
-    where: { channel: "email", recipient: "client", status: { in: ["pending", "failed"] } },
-    include: { service: { include: { client: true } } },
+    where: {
+      channel: "email",
+      recipient: "client",
+      status: { in: ["pending", "failed"] },
+    },
+    include: { subscription: { include: { client: true } } },
     orderBy: { id: "asc" },
   })
   return {
     ok: true,
     data: {
       items: rows.flatMap((r) =>
-        r.service.client.email
+        r.subscription.client.email
           ? [
               {
                 id: r.id.toString(),
-                name: r.service.client.name,
-                email: r.service.client.email,
-                domain: r.service.domain,
+                name: r.subscription.client.name,
+                email: r.subscription.client.email,
+                domain: r.subscription.domain,
               },
             ]
           : []
@@ -115,7 +119,8 @@ export async function sendEmailAndWhatsappAction(input: {
   if (!p.success || (!p.data.emailId && !p.data.whatsappId)) return invalid()
   const emailId = p.data.emailId ? bigId.safeParse(p.data.emailId) : null
   const whatsappId = p.data.whatsappId ? bigId.safeParse(p.data.whatsappId) : null
-  if ((emailId && !emailId.success) || (whatsappId && !whatsappId.success)) return invalid()
+  if ((emailId && !emailId.success) || (whatsappId && !whatsappId.success))
+    return invalid()
 
   const whatsapp = whatsappId?.success
     ? await setReminderStatus(whatsappId.data, "opened").then((r) =>
@@ -127,7 +132,9 @@ export async function sendEmailAndWhatsappAction(input: {
   return { ok: true, data: { email, whatsapp } }
 }
 
-export async function sendAdminSummaryEmailAction(): Promise<ActionResult<{ count: number }>> {
+export async function sendAdminSummaryEmailAction(): Promise<
+  ActionResult<{ count: number }>
+> {
   await requireAdmin()
   const res = await sendAdminSummaryEmail()
   refreshApp()
@@ -139,17 +146,21 @@ export async function sendAdminSummaryEmailAction(): Promise<ActionResult<{ coun
  * opened. The dashboard already renders the link as an <a href> and calls
  * this on click (opening a URL after an await would be blocked as a popup).
  */
-export async function adminSummaryWhatsappAction(): Promise<ActionResult<{ url: string }>> {
+export async function adminSummaryWhatsappAction(): Promise<
+  ActionResult<{ url: string }>
+> {
   await requireAdmin()
   const res = await openAdminSummaryWhatsapp()
   refreshApp()
   return res.ok ? { ok: true, data: { url: res.url } } : res
 }
 
-export async function sendManualEmailAction(serviceId: number): Promise<ActionResult> {
+export async function sendManualEmailAction(
+  subscriptionId: number
+): Promise<ActionResult> {
   await requireAdmin()
-  if (!numericId.safeParse(serviceId).success) return invalid()
-  const res = await sendManualEmail(serviceId)
+  if (!numericId.safeParse(subscriptionId).success) return invalid()
+  const res = await sendManualEmail(subscriptionId)
   refreshApp()
   return res.ok ? { ok: true } : res
 }

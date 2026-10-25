@@ -60,7 +60,12 @@ export function ReminderLogTable({
 }) {
   return (
     <div className="@container">
-      <div className={cn("hidden", showClient ? "@min-[1100px]:block" : "@min-[700px]:block")}>
+      <div
+        className={cn(
+          "hidden",
+          showClient ? "@min-[1100px]:block" : "@min-[700px]:block"
+        )}
+      >
         <Table>
           <TableHeader>
             <TableRow>
@@ -83,22 +88,30 @@ export function ReminderLogTable({
                 {showDomain && (
                   <TableCell>
                     <Link
-                      href={`/clients/${r.service.clientId}`}
-                      title={r.service.domain}
+                      href={`/clients/${r.subscription.clientId}?tab=subscriptions#sub-${r.subscriptionId}`}
+                      title={r.subscription.domain}
                       className="block max-w-48 truncate hover:underline"
                     >
-                      {r.service.domain}
+                      {r.subscription.domain}
                     </Link>
+                    <div className="max-w-48 truncate text-xs text-ink-muted">
+                      {r.subscription.serviceName}
+                    </div>
                   </TableCell>
                 )}
                 {showClient && (
                   <TableCell>
                     <div
                       className="max-w-48 truncate text-ink-muted"
-                      title={r.service.clientName}
+                      title={r.subscription.clientName}
                     >
-                      {r.service.clientName}
+                      {r.subscription.clientName}
                     </div>
+                    {r.subscription.company && (
+                      <div className="max-w-48 truncate text-xs text-ink-muted">
+                        {r.subscription.company}
+                      </div>
+                    )}
                   </TableCell>
                 )}
                 <TableCell className="text-ink-muted">{stageLabel(r.stage)}</TableCell>
@@ -121,12 +134,21 @@ export function ReminderLogTable({
         </Table>
       </div>
 
-      <ul className={cn("divide-y divide-border", showClient ? "@min-[1100px]:hidden" : "@min-[700px]:hidden")}>
+      <ul
+        className={cn(
+          "divide-y divide-border",
+          showClient ? "@min-[1100px]:hidden" : "@min-[700px]:hidden"
+        )}
+      >
         {rows.map((r) => (
           <li key={r.id} className="p-4 sm:p-5">
             <div className="flex items-center justify-between gap-3">
-              <Link href={`/clients/${r.service.clientId}`} title={r.service.domain} className="min-w-0 truncate font-medium min-h-11 inline-flex items-center hover:underline">
-                {r.service.domain}
+              <Link
+                href={`/clients/${r.subscription.clientId}`}
+                title={r.subscription.domain}
+                className="inline-flex min-h-11 min-w-0 items-center truncate font-medium hover:underline"
+              >
+                {r.subscription.domain}
               </Link>
               <ReminderStatusBadge status={r.status} />
             </div>
@@ -136,10 +158,10 @@ export function ReminderLogTable({
             </div>
             <div
               className="mt-1 truncate text-sm text-ink-muted"
-              title={r.service.clientName}
+              title={r.subscription.clientName}
             >
               {stageLabel(r.stage)}
-              {showClient && ` · ${r.service.clientName}`}
+              {showClient && ` · ${r.subscription.clientName}`}
             </div>
             <div className="mt-0.5 text-sm text-ink-muted">{when(r)}</div>
             {r.lastError && (

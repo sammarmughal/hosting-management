@@ -1,7 +1,8 @@
 // Invoices (docs/13 §2–§5). Pure: numbering format, totals with tax, the
 // creation window, the derived overdue status and display labels. Money is
 // handled as integer thousandths (see money.ts), never JS floats.
-import { addOneYear, formatDatePK, type ISODate } from "@/lib/domain/dates"
+import { nextRenewal } from "@/lib/domain/cycles"
+import { formatDatePK, type ISODate } from "@/lib/domain/dates"
 import { fromUnits, MONEY_SCALE, toUnits } from "@/lib/domain/money"
 import type { PaymentSnapshot } from "@/lib/domain/payment-accounts"
 
@@ -81,7 +82,8 @@ export function invoiceTotals(
   })
   const subtotal = amounts.reduce((a, b) => a + b, 0n)
   const disc = toUnits(discount)
-  if (disc < 0n || disc > subtotal) throw new RangeError("Discount must be between 0 and the subtotal")
+  if (disc < 0n || disc > subtotal)
+    throw new RangeError("Discount must be between 0 and the subtotal")
   const bp = rateBasisPoints(taxRate)
   const step = 10n ** BigInt(MONEY_SCALE - Math.min(Math.max(decimals, 0), MONEY_SCALE))
   const tax = divRound((subtotal - disc) * bp, 10000n * step) * step
@@ -100,7 +102,7 @@ export function invoiceTotals(
 export const LEAD_DAY_CHOICES = [15, 30] as const
 export const DEFAULT_LEAD_DAYS = 30
 
-/** An active service gets its cycle's invoice once daysLeft ≤ leadDays. */
+/** An active subscription gets its cycle's invoice once daysLeft ≤ leadDays. */
 export function invoiceDue(
   s: { status: "active" | "cancelled"; daysLeft: number },
   leadDays: number
@@ -111,7 +113,8 @@ export function invoiceDue(
 export type InvoiceStatus = "issued" | "sent" | "paid" | "void"
 export type InvoiceDisplayStatus = "unpaid" | "sent" | "overdue" | "paid" | "void"
 
-export const isOpenInvoice = (status: InvoiceStatus) => status === "issued" || status === "sent"
+export const isOpenInvoice = (status: InvoiceStatus) =>
+  status === "issued" || status === "sent"
 
 /** Overdue is derived: due date passed and not paid (never stored). */
 export function displayStatus(
@@ -132,9 +135,13 @@ export const INVOICE_STATUS_LABEL: Record<InvoiceDisplayStatus, string> = {
   void: "Void",
 }
 
-/** periodStart = the renewal date; periodEnd = one billing cycle later (1 year). */
+/** periodStart = the renewal date; periodEnd = one billing cycle later (docs/14 §1). */
 export function cyclePeriod(renewalDate: ISODate) {
-  return { periodStart: renewalDate, periodEnd: addOneYear(renewalDate), dueDate: renewalDate }
+  return {
+    periodStart: renewalDate,
+    periodEnd: nextRenewal(renewalDate),
+    dueDate: renewalDate,
+  }
 }
 
 /** "30 Sep 2026 → 30 Sep 2027" */
@@ -142,11 +149,16 @@ export const periodLabel = (start: ISODate, end: ISODate) =>
   `${formatDatePK(start)} → ${formatDatePK(end)}`
 
 /**
- * "Hosting renewal — noordental.pk" (+ ", Business plan"). A comma, not a
- * "·", so a wrapped line never ends on a dangling separator.
+ * "Web Hosting — noordental.pk" (+ ", Business plan"): the catalog name, then
+ * the identifier (docs/14 §5). A comma, not a "·", so a wrapped line never
+ * ends on a dangling separator.
  */
-export function itemDescription(domain: string, planLabel?: string | null) {
-  return `Hosting renewal — ${domain}${planLabel ? `, ${planLabel} plan` : ""}`
+export function itemDescription(
+  serviceName: string,
+  domain: string,
+  planLabel?: string | null
+) {
+  return `${serviceName} — ${domain}${planLabel ? `, ${planLabel} plan` : ""}`
 }
 
 /** Invoice-INV-2026-0012-noordental.pk.pdf (safe for Content-Disposition). */
@@ -175,11 +187,52 @@ export interface SellerSnapshot {
   footer: string
 }
 
-export interface BillToSnapshot {
+/** The subscription's company, printed under the client (docs/14 §5). */
+export interface CompanySnapshot {
   name: string
-  company: string | null
   email: string | null
   /** Normalised digits. */
   phone: string | null
   address: string | null
+}
+
+export interface BillToSnapshot {
+  name: string
+  /** null when the subscription has no company. */
+  company: CompanySnapshot | null
+  email: string | null
+  /** Normalised digits. */
+  phone: string | null
+  address: string | null
+}
+
+const str = (v: unknown) => (typeof v === "string" && v ? v : null)
+
+/**
+ * Reads a stored bill-to snapshot. Invoices issued before docs/14 kept the
+ * company as a plain string; it comes back as `{ name }`.
+ */
+export function readBillTo(json: unknown): BillToSnapshot {
+  const o = (json && typeof json === "object" ? json : {}) as Record<string, unknown>
+  const c = o.company
+  const company: CompanySnapshot | null =
+    typeof c === "string"
+      ? c
+        ? { name: c, email: null, phone: null, address: null }
+        : null
+      : c && typeof c === "object" && str((c as Record<string, unknown>).name)
+        ? {
+            name: str((c as Record<string, unknown>).name)!,
+            email: str((c as Record<string, unknown>).email),
+            phone: str((c as Record<string, unknown>).phone),
+            address: str((c as Record<string, unknown>).address),
+          }
+        : null
+  return {
+    name: str(o.name) ?? "",
+    company,
+    email: str(o.email),
+    phone: str(o.phone),
+    address: str(o.address),
+  }
 }

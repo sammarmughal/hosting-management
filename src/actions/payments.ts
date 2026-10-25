@@ -5,26 +5,26 @@ import { checkFields, invalid, numericId, refreshApp } from "@/lib/server/action
 import { audit } from "@/lib/server/audit"
 import { today } from "@/lib/server/clock"
 import { prisma } from "@/lib/server/db"
-import { renewService } from "@/lib/server/renewals"
+import { renewSubscription } from "@/lib/server/renewals"
 import { requireAdmin } from "@/lib/server/session"
 import type { ActionResult } from "@/types/actions"
 
-export async function renewServiceAction(
+export async function renewSubscriptionAction(
   input: RenewInput
 ): Promise<ActionResult<{ newRenewalDate: string }>> {
   await requireAdmin()
   const first = renewSchema(today()).safeParse(input)
   if (!first.success) return checkFields(first.error)
-  // The payment takes the service's currency, so its decimals apply.
-  const service = await prisma.service.findUnique({
-    where: { id: first.data.serviceId },
+  // The payment takes the subscription's currency, so its decimals apply.
+  const subscription = await prisma.subscription.findUnique({
+    where: { id: first.data.subscriptionId },
     select: { currency: true },
   })
-  if (!service) return { ok: false, error: "Service not found." }
-  const parsed = renewSchema(today(), service.currency).safeParse(input)
+  if (!subscription) return { ok: false, error: "Subscription not found." }
+  const parsed = renewSchema(today(), subscription.currency).safeParse(input)
   if (!parsed.success) return checkFields(parsed.error)
-  const newRenewalDate = await renewService(parsed.data)
-  if (!newRenewalDate) return { ok: false, error: "Service not found." }
+  const newRenewalDate = await renewSubscription(parsed.data)
+  if (!newRenewalDate) return { ok: false, error: "Subscription not found." }
   refreshApp()
   return { ok: true, data: { newRenewalDate } }
 }

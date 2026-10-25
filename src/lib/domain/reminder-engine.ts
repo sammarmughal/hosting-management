@@ -6,7 +6,7 @@ import { dueStage } from "@/lib/domain/stages"
 export type Channel = "email" | "whatsapp"
 export type Recipient = "client" | "admin"
 
-export interface CheckService {
+export interface CheckSubscription {
   id: number
   domain: string
   renewalDate: ISODate
@@ -29,13 +29,13 @@ export interface CheckConfig {
 export interface PlannedNotification {
   type: "expiring" | "expired"
   title: string
-  /** "stage:{serviceId}:{cycle}:{stage}" — unique, so a repeat check adds nothing. */
+  /** "stage:{subscriptionId}:{cycle}:{stage}" — unique, so a repeat check adds nothing. */
   dedupeKey: string
 }
 
-export interface ServicePlan {
-  serviceId: number
-  /** The cycle being reminded about: the service's current renewal date. */
+export interface SubscriptionPlan {
+  subscriptionId: number
+  /** The cycle being reminded about: the subscription's current renewal date. */
   cycle: ISODate
   stage: number
   daysLeft: number
@@ -52,11 +52,11 @@ export function dueTitle(domain: string, d: number): string {
 
 /** Rows queued for one stage (docs/04 §3.2). */
 export function rowsFor(
-  s: Pick<CheckService, "clientEmail" | "clientPhone">,
+  s: Pick<CheckSubscription, "clientEmail" | "clientPhone">,
   stage: number,
   cfg: Pick<CheckConfig, "postExpiryToClient" | "hasAdminEmail" | "hasAdminWhatsapp">
-): ServicePlan["rows"] {
-  const rows: ServicePlan["rows"] = []
+): SubscriptionPlan["rows"] {
+  const rows: SubscriptionPlan["rows"] = []
   const toClient = stage >= 0 || cfg.postExpiryToClient
   if (toClient && s.clientEmail) rows.push({ channel: "email", recipient: "client" })
   if (toClient && s.clientPhone) rows.push({ channel: "whatsapp", recipient: "client" })
@@ -66,18 +66,21 @@ export function rowsFor(
 }
 
 /**
- * One plan per service with a due stage. Services that are cancelled, have
+ * One plan per subscription with a due stage. Subscriptions that are cancelled, have
  * reminders off or are not inside the first stage yet are left out.
  */
-export function planCheck(services: readonly CheckService[], cfg: CheckConfig): ServicePlan[] {
-  const plans: ServicePlan[] = []
-  for (const s of services) {
+export function planCheck(
+  subs: readonly CheckSubscription[],
+  cfg: CheckConfig
+): SubscriptionPlan[] {
+  const plans: SubscriptionPlan[] = []
+  for (const s of subs) {
     if (s.status !== "active" || !s.remindersEnabled) continue
     const d = daysLeft(s.renewalDate, cfg.today)
     const stage = dueStage(d, cfg.stages)
     if (stage === null) continue
     plans.push({
-      serviceId: s.id,
+      subscriptionId: s.id,
       cycle: s.renewalDate,
       stage,
       daysLeft: d,

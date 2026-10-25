@@ -4,7 +4,7 @@ import {
   CalendarClockIcon,
   LayoutDashboardIcon,
   MenuIcon,
-  UsersIcon,
+  RefreshCwIcon,
   type LucideIcon,
 } from "lucide-react"
 import Link from "next/link"
@@ -13,9 +13,10 @@ import { isActive } from "@/components/layout/nav"
 import { cn } from "@/lib/utils"
 import type { ShellSummary } from "@/types/view"
 
+// docs/14 §7: the daily work; everything else is under More.
 const ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon },
-  { href: "/clients", label: "Clients", icon: UsersIcon },
+  { href: "/subscriptions", label: "Subscriptions", icon: RefreshCwIcon },
   { href: "/reminders", label: "Reminders", icon: CalendarClockIcon },
 ]
 

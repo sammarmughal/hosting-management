@@ -21,21 +21,55 @@ import { formatDatePK, isISODate } from "@/lib/domain/dates"
 import { downloadText } from "@/lib/download"
 import {
   IMPORT_HEADERS,
+  IMPORT_LABEL,
+  PREVIEW_COLUMNS,
   previewImport,
-  type ImportCurrencies,
+  REQUIRED_HEADERS,
+  type ImportContext,
+  type ImportKind,
   type ImportRow,
   type PreviewRow,
 } from "@/lib/domain/import"
 import { commitImportAction } from "@/actions/import"
 import { cn } from "@/lib/utils"
 
+/** What each file adds, and where to look afterwards (docs/14 §9). */
+const KIND_TEXT: Record<
+  ImportKind,
+  { intro: string; done: string; href: string; noun: string }
+> = {
+  clients: {
+    intro:
+      "Add clients from a CSV file: name, email, phone, billing address, currency and notes.",
+    done: "Go to clients",
+    href: "/clients",
+    noun: "client",
+  },
+  companies: {
+    intro:
+      "Add companies to existing clients. Each row names its client by name plus email or phone.",
+    done: "Go to companies",
+    href: "/companies",
+    noun: "company",
+  },
+  subscriptions: {
+    intro:
+      "Add subscriptions to existing clients and companies. The service must be an active one from the Service Catalog.",
+    done: "Go to subscriptions",
+    href: "/subscriptions",
+    noun: "subscription",
+  },
+}
+
 export function ImportFlow({
-  domains,
-  currencies,
+  kind,
+  context,
 }: {
-  domains: string[]
-  currencies: ImportCurrencies
+  kind: ImportKind
+  context: ImportContext
 }) {
+  const text = KIND_TEXT[kind]
+  const columns = PREVIEW_COLUMNS[kind]
   const fileInput = useRef<HTMLInputElement>(null)
   const [step, setStep] = useState(0)
   const [fileName, setFileName] = useState("")
@@ -47,13 +81,15 @@ export function ImportFlow({
   const [page, setPage] = useState(0)
   const [pending, start] = useTransition()
   const [done, setDone] = useState({ created: 0, updated: 0, skipped: 0 })
-  const preview = previewImport(rows, domains, undefined, currencies)
+  const preview: PreviewRow<unknown>[] = previewImport(kind, rows, context)
   const counts = {
     valid: preview.filter((r) => r.status === "valid").length,
     warning: preview.filter((r) => r.status === "warning").length,
     error: preview.filter((r) => r.status === "error").length,
   }
-  const eligible = preview.filter((r) => r.status !== "error" && (!r.existing || update))
+  const eligible = preview.filter(
+    (r) => r.status !== "error" && (!r.existingId || update)
+  )
   async function read(file?: File) {
     setError("")
     if (!file) return
@@ -79,7 +115,7 @@ export function ImportFlow({
       })
       if (result.errors.length)
         throw new Error(`Couldn’t read the CSV: ${result.errors[0]?.message}`)
-      const missing = ["client_name", "domain", "start_date", "charge_amount"].filter(
+      const missing = REQUIRED_HEADERS[kind].filter(
         (h) => !result.meta.fields?.includes(h)
       )
       if (missing.length)
@@ -105,10 +141,10 @@ export function ImportFlow({
       {error && <InlineAlert>{error}</InlineAlert>}
       {step === 0 ? (
         <section className="rounded-lg border border-border bg-surface p-4 sm:p-5">
-          <h2 className="text-base font-semibold">Import clients</h2>
-          <p className="mt-1 text-sm text-ink-muted">
-            Add clients and their hosting services from a CSV file.
-          </p>
+          <h2 className="text-base font-semibold">
+            Import {IMPORT_LABEL[kind].toLowerCase()}
+          </h2>
+          <p className="mt-1 text-sm text-ink-muted">{text.intro}</p>
           <div
             onDragOver={(e) => {
               e.preventDefault()
@@ -151,8 +187,8 @@ export function ImportFlow({
             className="mt-3 inline-flex min-h-11 items-center text-sm text-brand-700 hover:underline"
             onClick={() =>
               downloadText(
-                IMPORT_HEADERS.join(",") + "\r\n",
-                "renewals-import-template.csv",
+                IMPORT_HEADERS[kind].join(",") + "\r\n",
+                `renewals-${kind}-template.csv`,
                 "text/csv"
               )
             }
@@ -208,7 +244,7 @@ export function ImportFlow({
             {preview.length === 0 ? (
               <EmptyState
                 icon={FileSpreadsheetIcon}
-                message="This file has headers but no rows. Choose a file with client records."
+                message={`This file has headers but no rows. Choose a file with ${text.noun} records.`}
               />
             ) : (
               <>
@@ -217,9 +253,9 @@ export function ImportFlow({
                     <TableHeader>
                       <TableRow>
                         <TableHead className="text-right">Row</TableHead>
-                        <TableHead>Client</TableHead>
-                        <TableHead>Domain</TableHead>
-                        <TableHead>Renewal</TableHead>
+                        <TableHead>{columns[0]}</TableHead>
+                        <TableHead>{columns[1]}</TableHead>
+                        <TableHead>{columns[2]}</TableHead>
                         <TableHead>Status</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -229,27 +265,13 @@ export function ImportFlow({
                           <TableCell className="text-right text-ink-muted">
                             {r.row}
                           </TableCell>
-                          <TableCell>
-                            <span
-                              className="block max-w-44 truncate"
-                              title={r.input.client.name}
-                            >
-                              {r.input.client.name || "—"}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className="block max-w-44 truncate"
-                              title={r.input.service.domain}
-                            >
-                              {r.input.service.domain || "—"}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {isISODate(r.input.service.renewalDate)
-                              ? formatDatePK(r.input.service.renewalDate)
-                              : "—"}
-                          </TableCell>
+                          {r.cells.map((cell, i) => (
+                            <TableCell key={i}>
+                              <span className="block max-w-44 truncate" title={cell}>
+                                {show(cell)}
+                              </span>
+                            </TableCell>
+                          ))}
                           <TableCell className="py-2">
                             <ImportStatus row={r} />
                           </TableCell>
@@ -262,27 +284,18 @@ export function ImportFlow({
                   {preview.slice(page * 25, (page + 1) * 25).map((r) => (
                     <li key={r.row} className="space-y-2 p-4">
                       <div className="flex items-baseline justify-between gap-3">
-                        <span
-                          className="truncate font-medium"
-                          title={r.input.client.name}
-                        >
-                          {r.input.client.name || "Unnamed client"}
+                        <span className="truncate font-medium" title={r.cells[0]}>
+                          {show(r.cells[0])}
                         </span>
                         <span className="shrink-0 text-xs text-ink-muted">
                           Row {r.row}
                         </span>
                       </div>
-                      <p
-                        className="truncate text-sm text-ink-muted"
-                        title={r.input.service.domain}
-                      >
-                        {r.input.service.domain || "No domain"}
+                      <p className="truncate text-sm text-ink-muted" title={r.cells[1]}>
+                        {show(r.cells[1])}
                       </p>
                       <p className="text-xs text-ink-muted">
-                        Renews{" "}
-                        {isISODate(r.input.service.renewalDate)
-                          ? formatDatePK(r.input.service.renewalDate)
-                          : "—"}
+                        {columns[2]}: {show(r.cells[2])}
                       </p>
                       <ImportStatus row={r} />
                     </li>
@@ -320,7 +333,7 @@ export function ImportFlow({
                 onCheckedChange={(v) => setUpdate(v === true)}
                 disabled={pending}
               />
-              Update existing domains
+              Update existing records
             </label>
             <Button
               disabled={!eligible.length}
@@ -329,8 +342,10 @@ export function ImportFlow({
                 start(async () => {
                   setError("")
                   try {
+                    // The server previews these raw rows again before writing.
                     const res = await commitImportAction(
-                      eligible.map((r) => r.input),
+                      kind,
+                      eligible.map((r) => rows[r.row - 2]!),
                       update
                     )
                     if (!res.ok) setError(res.error)
@@ -360,7 +375,7 @@ export function ImportFlow({
             {done.created} created · {done.updated} updated · {done.skipped} skipped
           </p>
           <Button asChild className="mt-5">
-            <Link href="/clients">Go to clients</Link>
+            <Link href={text.href}>{text.done}</Link>
           </Button>
         </section>
       )}
@@ -368,7 +383,12 @@ export function ImportFlow({
   )
 }
 
-function ImportStatus({ row }: { row: PreviewRow }) {
+/** A cell: an ISO date reads as "30 Sep 2026", empty as "—". */
+function show(cell: string) {
+  return isISODate(cell) ? formatDatePK(cell) : cell || "—"
+}
+
+function ImportStatus({ row }: { row: PreviewRow<unknown> }) {
   return (
     <div>
       <span

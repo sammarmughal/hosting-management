@@ -9,9 +9,14 @@ const EXPORTS = [
     help: "One row per client, with contact details and currency.",
   },
   {
-    href: "/api/export/services",
-    label: "Services",
-    help: "Every hosting service, its renewal date and charge.",
+    href: "/api/export/companies",
+    label: "Companies",
+    help: "Every company with its client and billing details.",
+  },
+  {
+    href: "/api/export/subscriptions",
+    label: "Subscriptions",
+    help: "Every subscription, its service, company, renewal date and charge.",
   },
   {
     href: "/api/export/payments",

@@ -3,12 +3,12 @@ import Link from "next/link"
 
 import { STATUS_DOT } from "@/components/status-badge"
 import {
-  clientsHref,
   EXTRA_FILTER_LABEL,
   FILTER_CHIPS,
-  type ClientsParams,
-  type ServiceFilter,
-} from "@/lib/service-filters"
+  subscriptionsHref,
+  type SubscriptionFilter,
+  type SubscriptionsParams,
+} from "@/lib/subscription-filters"
 import { cn } from "@/lib/utils"
 
 /**
@@ -19,8 +19,8 @@ export function FilterChips({
   params,
   counts,
 }: {
-  params: ClientsParams
-  counts: Record<ServiceFilter, number>
+  params: SubscriptionsParams
+  counts: Record<SubscriptionFilter, number>
 }) {
   const extra = EXTRA_FILTER_LABEL[params.filter]
 
@@ -35,7 +35,7 @@ export function FilterChips({
           return (
             <Link
               key={chip.value}
-              href={clientsHref(params, { filter: chip.value })}
+              href={subscriptionsHref(params, { filter: chip.value })}
               aria-current={active ? "page" : undefined}
               scroll={false}
               className={cn(
@@ -64,7 +64,7 @@ export function FilterChips({
 
       {extra && (
         <Link
-          href={clientsHref(params, { filter: "all" })}
+          href={subscriptionsHref(params, { filter: "all" })}
           scroll={false}
           aria-label={`Remove filter: ${extra}`}
           className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-sm font-medium whitespace-nowrap text-ink outline-none hover:bg-surface-hover focus-visible:ring-3 focus-visible:ring-ring/40"

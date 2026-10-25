@@ -34,7 +34,7 @@ const period = (p: PaymentRow) =>
 /**
  * Payments (docs/06 §4.7 and §4.10), with Delete in a ⋯ menu. The
  * Payments page shows client and domain with a separate Reference column;
- * a client page shows the domain only when there's more than one service.
+ * a client page shows the domain only when there's more than one subscription.
  */
 export function PaymentsTable({
   rows,
@@ -57,7 +57,16 @@ export function PaymentsTable({
 
   return (
     <div className="@container">
-      <div className={cn("hidden", showClient ? "@min-[1100px]:block" : showDomain ? "@min-[800px]:block" : "@min-[700px]:block")}>
+      <div
+        className={cn(
+          "hidden",
+          showClient
+            ? "@min-[1100px]:block"
+            : showDomain
+              ? "@min-[800px]:block"
+              : "@min-[700px]:block"
+        )}
+      >
         <Table
           className={cn(showClient && separateReference && "min-w-[1100px] table-fixed")}
         >
@@ -91,12 +100,26 @@ export function PaymentsTable({
                     <div className="max-w-full truncate font-medium" title={p.clientName}>
                       {p.clientName}
                     </div>
+                    {p.company && (
+                      <div
+                        className="max-w-full truncate text-xs text-ink-muted"
+                        title={p.company}
+                      >
+                        {p.company}
+                      </div>
+                    )}
                   </TableCell>
                 )}
                 {showDomain && (
                   <TableCell>
                     <div className="max-w-full truncate" title={p.domain}>
                       {p.domain}
+                    </div>
+                    <div
+                      className="max-w-full truncate text-xs text-ink-muted"
+                      title={p.serviceName}
+                    >
+                      {p.serviceName}
                     </div>
                   </TableCell>
                 )}
@@ -137,26 +160,43 @@ export function PaymentsTable({
         </Table>
       </div>
 
-      <ul className={cn("divide-y divide-border", showClient ? "@min-[1100px]:hidden" : showDomain ? "@min-[800px]:hidden" : "@min-[700px]:hidden")}>
+      <ul
+        className={cn(
+          "divide-y divide-border",
+          showClient
+            ? "@min-[1100px]:hidden"
+            : showDomain
+              ? "@min-[800px]:hidden"
+              : "@min-[700px]:hidden"
+        )}
+      >
         {rows.map((p) => (
           <li key={p.id} className="flex gap-2 p-4 sm:p-5">
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="font-medium font-mono">{formatMoney(p.amount, p.currency)}</span>
+                <span className="font-mono font-medium">
+                  {formatMoney(p.amount, p.currency)}
+                </span>
                 <span className="shrink-0 text-sm text-ink-muted">
                   {formatDatePK(p.paidOn)}
                 </span>
               </div>
               {showClient && (
-                <div title={p.clientName} className="mt-1 truncate text-sm">{p.clientName}</div>
+                <div title={p.clientName} className="mt-1 truncate text-sm">
+                  {p.clientName}
+                  {p.company && <span className="text-ink-muted"> · {p.company}</span>}
+                </div>
               )}
-              <div title={`${p.method} ? ${p.reference ?? ""}`} className="mt-1 truncate text-sm text-ink-muted">
+              <div
+                title={`${p.method} ? ${p.reference ?? ""}`}
+                className="mt-1 truncate text-sm text-ink-muted"
+              >
                 {p.method}
                 {p.reference ? ` · ${p.reference}` : ""}
               </div>
               {showDomain && (
                 <div className="mt-1 truncate text-sm text-ink-muted" title={p.domain}>
-                  {p.domain}
+                  {p.domain} · {p.serviceName}
                 </div>
               )}
               <div className="mt-1 text-xs text-ink-muted">{period(p)}</div>
@@ -181,10 +221,10 @@ export function PaymentsTable({
               <b className="font-medium text-ink">not</b> roll back the renewal date of{" "}
               {deleting.domain}.{" "}
               <Link
-                href={`/services/${deleting.serviceId}/edit`}
+                href={`/subscriptions/${deleting.subscriptionId}/edit`}
                 className="font-medium text-brand-700 underline-offset-3 hover:underline"
               >
-                Edit the service
+                Edit the subscription
               </Link>{" "}
               if the date should move back.
             </>

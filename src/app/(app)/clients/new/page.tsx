@@ -2,7 +2,6 @@ import type { Metadata } from "next"
 
 import { ClientForm } from "@/components/client-form"
 import { PageHeader } from "@/components/page-header"
-import { addOneYear, todayPK } from "@/lib/domain/dates"
 import { currencyOptions } from "@/lib/domain/currency"
 import { getSettings } from "@/lib/data"
 
@@ -10,37 +9,23 @@ export const metadata: Metadata = { title: "Add client" }
 
 export default async function NewClientPage() {
   const settings = await getSettings()
-  const today = todayPK()
 
   return (
     <>
       <PageHeader
         title="Add client"
-        description="A client and their first hosting service."
+        description="Customer details only. Add their companies and subscriptions next."
       />
       <ClientForm
         mode="new"
         currencies={currencyOptions(settings.enabledCurrencies)}
         defaultValues={{
-          client: {
-            name: "",
-            company: "",
-            email: "",
-            phone: "",
-            address: "",
-            currency: settings.defaultCurrency,
-            notes: "",
-          },
-          service: {
-            domain: "",
-            planLabel: "",
-            startDate: today,
-            renewalDate: addOneYear(today),
-            chargeAmount: "",
-            currency: settings.defaultCurrency,
-            remindersEnabled: true,
-            notes: "",
-          },
+          name: "",
+          email: "",
+          phone: "",
+          address: "",
+          currency: settings.defaultCurrency,
+          notes: "",
         }}
       />
     </>

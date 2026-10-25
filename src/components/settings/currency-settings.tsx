@@ -20,7 +20,7 @@ const selectClass =
 /**
  * Settings → Business: the enabled currencies (any ISO 4217 code, added from a
  * searchable list) and the default for new clients (docs/13 §6). A currency
- * used by a client or service, and the default, can't be removed.
+ * used by a client or subscription, and the default, can't be removed.
  */
 export function CurrencySettings({
   enabled,
@@ -103,8 +103,8 @@ export function CurrencySettings({
           />
         </div>
         <p id="currencies-help" className="text-xs text-ink-muted">
-          Offered on the client and service forms. Amounts are never converted between
-          currencies. A currency in use, or the default, can’t be removed.
+          Offered on the client and subscription forms. Amounts are never converted
+          between currencies. A currency in use, or the default, can’t be removed.
         </p>
       </fieldset>
       <FormField

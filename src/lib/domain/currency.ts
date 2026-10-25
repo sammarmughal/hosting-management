@@ -234,7 +234,7 @@ export function normaliseCurrencyList(codes: readonly string[]): string[] {
 }
 
 /**
- * Currencies a client or service form offers: the ones enabled in Settings,
+ * Currencies a client or subscription form offers: the ones enabled in Settings,
  * plus the record's current one if it has since been turned off (so editing keeps it).
  */
 export function currencyOptions(enabled: readonly string[], current?: string): string[] {
@@ -246,24 +246,24 @@ export function currencyOptions(enabled: readonly string[], current?: string): s
 /** What keeps a currency switched on, for the Settings tooltip and the action. */
 export interface CurrencyUse {
   clients: number
-  services: number
+  subscriptions: number
 }
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`
 
-/** "Used by 2 clients and 1 service" / null when unused. */
+/** "Used by 2 clients and 1 subscription" / null when unused. */
 export function currencyUseText(use: CurrencyUse | undefined): string | null {
-  if (!use || (use.clients === 0 && use.services === 0)) return null
+  if (!use || (use.clients === 0 && use.subscriptions === 0)) return null
   const parts = [
     use.clients ? plural(use.clients, "client") : "",
-    use.services ? plural(use.services, "service") : "",
+    use.subscriptions ? plural(use.subscriptions, "subscription") : "",
   ].filter(Boolean)
   return `Used by ${parts.join(" and ")}`
 }
 
 /**
  * Null when `enabled` keeps every currency in use switched on, else why not:
- * "AED is used by 2 clients and 1 service, so it can't be turned off."
+ * "AED is used by 2 clients and 1 subscription, so it can't be turned off."
  */
 export function currencyInUseError(
   enabled: readonly string[],

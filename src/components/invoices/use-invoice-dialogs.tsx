@@ -8,7 +8,7 @@ import { ShareInvoiceDialog } from "@/components/invoices/share-invoice-dialog"
 import { VoidInvoiceDialog } from "@/components/invoices/void-invoice-dialog"
 import { RenewDialog } from "@/components/renew-dialog"
 import { attemptAction } from "@/lib/attempt-action"
-import type { ServiceRow } from "@/types/view"
+import type { SubscriptionRow } from "@/types/view"
 
 export interface InvoiceRef {
   id: number
@@ -27,7 +27,10 @@ export function useInvoiceDialogs() {
   const [shareOpen, setShareOpen] = React.useState(false)
   const [voiding, setVoiding] = React.useState<InvoiceRef | null>(null)
   const [voidOpen, setVoidOpen] = React.useState(false)
-  const [paying, setPaying] = React.useState<{ invoice: InvoiceRef; service: ServiceRow } | null>(null)
+  const [paying, setPaying] = React.useState<{
+    invoice: InvoiceRef
+    subscription: SubscriptionRow
+  } | null>(null)
   const [payOpen, setPayOpen] = React.useState(false)
 
   const openShare = React.useCallback((inv: InvoiceRef) => {
@@ -38,17 +41,21 @@ export function useInvoiceDialogs() {
     setVoiding(inv)
     setVoidOpen(true)
   }, [])
-  const openPay = React.useCallback(async (inv: InvoiceRef, service?: ServiceRow) => {
-    if (service) {
-      setPaying({ invoice: inv, service })
+  const openPay = React.useCallback(
+    async (inv: InvoiceRef, service?: SubscriptionRow) => {
+      if (service) {
+        setPaying({ invoice: inv, subscription: service })
+        setPayOpen(true)
+        return
+      }
+      const res = await attemptAction(() => getInvoiceShareDataAction(inv.id))
+      if (!res.ok || !res.data)
+        return void toast.error(res.ok ? "Invoice not found." : res.error)
+      setPaying({ invoice: inv, subscription: res.data.subscription })
       setPayOpen(true)
-      return
-    }
-    const res = await attemptAction(() => getInvoiceShareDataAction(inv.id))
-    if (!res.ok || !res.data) return void toast.error(res.ok ? "Invoice not found." : res.error)
-    setPaying({ invoice: inv, service: res.data.service })
-    setPayOpen(true)
-  }, [])
+    },
+    []
+  )
 
   const dialogs = (
     <>
@@ -62,7 +69,7 @@ export function useInvoiceDialogs() {
       )}
       <VoidInvoiceDialog invoice={voiding} open={voidOpen} onOpenChange={setVoidOpen} />
       <RenewDialog
-        service={paying?.service ?? null}
+        subscription={paying?.subscription ?? null}
         invoice={paying?.invoice ?? null}
         open={payOpen}
         onOpenChange={setPayOpen}

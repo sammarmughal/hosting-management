@@ -64,16 +64,21 @@ export function ContactCard({ client }: { client: ClientDetail }) {
             <span className="text-ink-subtle">No valid WhatsApp number</span>
           )}
         </Row>
-        <Row icon={BanknoteIcon} label="Currency">
-          <span className="truncate text-ink" title="New services, invoices and payments start in it">
+        <Row icon={BanknoteIcon} label="Default currency">
+          <span
+            className="truncate text-ink"
+            title="New subscriptions, invoices and payments start in it"
+          >
             <span className="font-mono">{client.currency}</span>
             <span className="text-ink-muted"> · {currencyName(client.currency)}</span>
           </span>
         </Row>
         {/* Optional: nothing is shown when there's no address. */}
         {client.address && (
-          <Row icon={MapPinIcon} label="Address" multiline>
-            <span className="whitespace-pre-line text-ink wrap-break-word">{client.address}</span>
+          <Row icon={MapPinIcon} label="Billing address" multiline>
+            <span className="wrap-break-word whitespace-pre-line text-ink">
+              {client.address}
+            </span>
           </Row>
         )}
       </ul>
@@ -107,7 +112,14 @@ function Row({
           : "flex min-h-10 items-center gap-3 text-base"
       }
     >
-      <Icon aria-hidden className={multiline ? "mt-1 size-4 shrink-0 text-ink-subtle" : "size-4 shrink-0 text-ink-subtle"} />
+      <Icon
+        aria-hidden
+        className={
+          multiline
+            ? "mt-1 size-4 shrink-0 text-ink-subtle"
+            : "size-4 shrink-0 text-ink-subtle"
+        }
+      />
       <span className="sr-only">{label}:</span>
       <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
     </li>

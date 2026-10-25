@@ -29,7 +29,10 @@ export function SearchField({
   const [q, setQ] = React.useState(value)
   const inputRef = React.useRef<HTMLInputElement>(null)
   React.useEffect(() => {
-    if (label === "Search clients" && new URLSearchParams(window.location.search).get("focus") === "search") {
+    if (
+      label === "Search subscriptions" &&
+      new URLSearchParams(window.location.search).get("focus") === "search"
+    ) {
       inputRef.current?.focus()
     }
   }, [label])

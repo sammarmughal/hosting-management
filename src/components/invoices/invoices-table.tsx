@@ -15,7 +15,10 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { InvoiceStatusBadge } from "@/components/invoices/invoice-status-badge"
-import { useInvoiceDialogs, type InvoiceRef } from "@/components/invoices/use-invoice-dialogs"
+import {
+  useInvoiceDialogs,
+  type InvoiceRef,
+} from "@/components/invoices/use-invoice-dialogs"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -80,7 +83,9 @@ export function InvoicesTable({
 
   return (
     <div className="@container">
-      <div className={cn("hidden", showClient ? "@min-[960px]:block" : "@min-[720px]:block")}>
+      <div
+        className={cn("hidden", showClient ? "@min-[960px]:block" : "@min-[720px]:block")}
+      >
         <Table className="table-fixed">
           <colgroup>
             <col style={{ width: "15%" }} />
@@ -96,7 +101,7 @@ export function InvoicesTable({
             <TableRow>
               <TableHead>Number</TableHead>
               {showClient && <TableHead>Client</TableHead>}
-              <TableHead>Domain</TableHead>
+              <TableHead>Domain · service</TableHead>
               <TableHead>Issue date</TableHead>
               <TableHead>Due date</TableHead>
               <TableHead className="text-right">Amount</TableHead>
@@ -112,7 +117,8 @@ export function InvoicesTable({
                 key={i.id}
                 className="group/row cursor-pointer"
                 onClick={(e) => {
-                  if ((e.target as HTMLElement).closest("a,button,[role=menuitem]")) return
+                  if ((e.target as HTMLElement).closest("a,button,[role=menuitem]"))
+                    return
                   router.push(`/invoices/${i.id}`)
                 }}
               >
@@ -130,7 +136,10 @@ export function InvoicesTable({
                       {i.clientName}
                     </div>
                     {(i.company || i.email) && (
-                      <div className="truncate text-xs text-ink-muted" title={i.company ?? i.email ?? undefined}>
+                      <div
+                        className="truncate text-xs text-ink-muted"
+                        title={i.company ?? i.email ?? undefined}
+                      >
                         {i.company ?? i.email}
                       </div>
                     )}
@@ -140,12 +149,21 @@ export function InvoicesTable({
                   <div className="truncate" title={i.domain}>
                     {i.domain}
                   </div>
+                  <div className="truncate text-xs text-ink-muted" title={i.serviceName}>
+                    {i.serviceName}
+                  </div>
                 </TableCell>
-                <TableCell className="tabular-nums">{formatDatePK(i.issueDate)}</TableCell>
-                <TableCell className={cn("tabular-nums", i.status === "overdue" && "text-red-fg")}>
+                <TableCell className="tabular-nums">
+                  {formatDatePK(i.issueDate)}
+                </TableCell>
+                <TableCell
+                  className={cn("tabular-nums", i.status === "overdue" && "text-red-fg")}
+                >
                   {formatDatePK(i.dueDate)}
                 </TableCell>
-                <TableCell className="text-right font-mono">{formatMoney(i.total, i.currency)}</TableCell>
+                <TableCell className="text-right font-mono">
+                  {formatMoney(i.total, i.currency)}
+                </TableCell>
                 <TableCell>
                   <InvoiceStatusBadge status={i.status} />
                 </TableCell>
@@ -156,7 +174,12 @@ export function InvoicesTable({
         </Table>
       </div>
 
-      <ul className={cn("divide-y divide-border", showClient ? "@min-[960px]:hidden" : "@min-[720px]:hidden")}>
+      <ul
+        className={cn(
+          "divide-y divide-border",
+          showClient ? "@min-[960px]:hidden" : "@min-[720px]:hidden"
+        )}
+      >
         {rows.map((i) => (
           <li key={i.id} className="flex gap-2 p-4 sm:p-5">
             <Link
@@ -174,14 +197,26 @@ export function InvoicesTable({
                   {i.clientName}
                 </div>
               )}
+              {i.company && (
+                <div className="mt-0.5 truncate text-sm text-ink-muted" title={i.company}>
+                  {i.company}
+                </div>
+              )}
               <div className="mt-0.5 truncate text-sm text-ink-muted" title={i.domain}>
-                {i.domain}
+                {i.domain} · {i.serviceName}
               </div>
               <div className="mt-1.5 flex items-baseline justify-between gap-3">
-                <span className={cn("text-xs text-ink-muted", i.status === "overdue" && "text-red-fg")}>
+                <span
+                  className={cn(
+                    "text-xs text-ink-muted",
+                    i.status === "overdue" && "text-red-fg"
+                  )}
+                >
                   Due {formatDatePK(i.dueDate)}
                 </span>
-                <span className="font-mono text-sm font-medium">{formatMoney(i.total, i.currency)}</span>
+                <span className="font-mono text-sm font-medium">
+                  {formatMoney(i.total, i.currency)}
+                </span>
               </div>
             </Link>
             {menu(i, true)}

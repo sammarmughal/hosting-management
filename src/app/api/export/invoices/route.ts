@@ -20,6 +20,7 @@ const COLUMNS: {
   { header: "due_date", value: (i) => i.dueDate },
   { header: "client_name", value: (i) => i.clientName },
   { header: "company", value: (i) => i.company },
+  { header: "service_type", value: (i) => i.serviceName },
   { header: "domain", value: (i) => i.domain },
   { header: "period_start", value: (i) => i.periodStart },
   { header: "period_end", value: (i) => i.periodEnd },

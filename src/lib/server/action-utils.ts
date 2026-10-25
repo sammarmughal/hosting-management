@@ -3,8 +3,10 @@ import "server-only"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
-import { fieldErrorsFrom, type ServiceData } from "@/lib/domain/validation"
+import { currencyOptions } from "@/lib/domain/currency"
+import { fieldErrorsFrom, type SubscriptionData } from "@/lib/domain/validation"
 import { toDbDate } from "@/lib/server/db-dates"
+import { getAppSettings } from "@/lib/server/settings"
 import type { ActionResult } from "@/types/actions"
 
 export const numericId = z.number().int().positive()
@@ -19,12 +21,19 @@ export function invalid(): ActionResult<never> {
 }
 
 export function checkFields(error: z.ZodError): ActionResult<never> {
-  return { ok: false, error: "Check the highlighted fields.", fieldErrors: fieldErrorsFrom(error) }
+  return {
+    ok: false,
+    error: "Check the highlighted fields.",
+    fieldErrors: fieldErrorsFrom(error),
+  }
 }
 
-/** Validated service form data → Prisma columns. */
-export function serviceData(s: ServiceData) {
+/** Validated subscription form data → Prisma columns. */
+export function subscriptionData(s: SubscriptionData) {
   return {
+    clientId: s.clientId,
+    companyId: s.companyId,
+    serviceTypeId: s.serviceTypeId,
     domain: s.domain,
     planLabel: s.planLabel,
     startDate: toDbDate(s.startDate),
@@ -36,7 +45,23 @@ export function serviceData(s: ServiceData) {
   }
 }
 
-/** Every page shows services, counts or the bell, so refresh the whole app layout. */
+/** Every page shows subscriptions, counts or the bell, so refresh the whole app layout. */
 export function refreshApp() {
   revalidatePath("/", "layout")
+}
+
+/** The highlighted-fields answer for problems found on the server. */
+export function fieldProblems(fieldErrors: Record<string, string>): ActionResult<never> {
+  return { ok: false, error: "Check the highlighted fields.", fieldErrors }
+}
+
+/** The currency must be enabled in settings; an edit may keep its current one. */
+export async function currencyError(
+  currency: string,
+  field: string,
+  current?: string
+): Promise<ActionResult<never> | null> {
+  const { enabledCurrencies } = await getAppSettings()
+  if (currencyOptions(enabledCurrencies, current).includes(currency)) return null
+  return fieldProblems({ [field]: `${currency} isn’t turned on in Settings` })
 }

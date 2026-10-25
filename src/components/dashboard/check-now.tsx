@@ -45,7 +45,9 @@ export function CheckNow({
     const queued = r.queuedNew ? plural(r.queuedNew, "new reminder") : "no new reminders"
     // docs/13 §4: the check also creates invoices; say so.
     const invoices = r.invoicesNew ? ` · ${plural(r.invoicesNew, "new invoice")}` : ""
-    toast.success(`Checked ${plural(r.servicesChecked, "service")} · ${queued}${invoices}`)
+    toast.success(
+      `Checked ${plural(r.subscriptionsChecked, "subscription")} · ${queued}${invoices}`
+    )
     // Reload the queue and counts from the server.
     router.refresh()
   }

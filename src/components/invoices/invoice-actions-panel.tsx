@@ -16,7 +16,7 @@ import { toast } from "sonner"
 import {
   refreshBusinessDetailsAction,
   regenerateLinkAction,
-  updateFromServiceAction,
+  updateFromSubscriptionAction,
 } from "@/actions/invoices"
 import { ConfirmDialog } from "@/components/confirm-dialog"
 import { copyInvoiceLink } from "@/components/invoices/invoices-table"
@@ -49,7 +49,7 @@ export function InvoiceActionsPanel({
 
   async function update() {
     setUpdating(true)
-    const res = await attemptAction(() => updateFromServiceAction(inv.id))
+    const res = await attemptAction(() => updateFromSubscriptionAction(inv.id))
     setUpdating(false)
     if (res.ok) toast.success(`${inv.number} updated from the service`)
     else toast.error(res.error)
@@ -58,7 +58,10 @@ export function InvoiceActionsPanel({
   const full = "w-full justify-start max-md:h-11"
 
   return (
-    <section aria-label="Invoice actions" className="rounded-lg border border-border bg-surface p-4 sm:p-5">
+    <section
+      aria-label="Invoice actions"
+      className="rounded-lg border border-border bg-surface p-4 sm:p-5"
+    >
       {inv.rawStatus === "paid" && inv.paidAt && (
         <p className="mb-4 flex items-center gap-2 text-sm text-green-fg">
           <CircleCheckIcon aria-hidden className="size-4" />
@@ -95,7 +98,11 @@ export function InvoiceActionsPanel({
             Download PDF
           </a>
         </Button>
-        <Button variant="outline" className={full} onClick={() => void copyInvoiceLink(link)}>
+        <Button
+          variant="outline"
+          className={full}
+          onClick={() => void copyInvoiceLink(link)}
+        >
           <LinkIcon />
           Copy link
         </Button>
@@ -109,18 +116,34 @@ export function InvoiceActionsPanel({
 
       <div className="mt-4 grid gap-1 border-t border-border pt-3">
         {open && (
-          <Button variant="ghost" size="sm" className={full} loading={updating} onClick={() => void update()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={full}
+            loading={updating}
+            onClick={() => void update()}
+          >
             <RefreshCwIcon />
             Update from service
           </Button>
         )}
         {open && (
-          <Button variant="ghost" size="sm" className={full} onClick={() => setRefreshOpen(true)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={full}
+            onClick={() => setRefreshOpen(true)}
+          >
             <BuildingIcon />
             Refresh business details
           </Button>
         )}
-        <Button variant="ghost" size="sm" className={full} onClick={() => setRegenOpen(true)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={full}
+          onClick={() => setRegenOpen(true)}
+        >
           <RotateCwIcon />
           Regenerate link
         </Button>
@@ -137,14 +160,23 @@ export function InvoiceActionsPanel({
         )}
       </div>
 
-      <ShareInvoiceDialog invoiceId={inv.id} data={share} open={shareOpen} onOpenChange={setShareOpen} />
+      <ShareInvoiceDialog
+        invoiceId={inv.id}
+        data={share}
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+      />
       <RenewDialog
-        service={inv.service}
+        subscription={inv.subscription}
         invoice={{ number: inv.number, total: inv.total, currency: inv.currency }}
         open={payOpen}
         onOpenChange={setPayOpen}
       />
-      <VoidInvoiceDialog invoice={{ id: inv.id, number: inv.number }} open={voidOpen} onOpenChange={setVoidOpen} />
+      <VoidInvoiceDialog
+        invoice={{ id: inv.id, number: inv.number }}
+        open={voidOpen}
+        onOpenChange={setVoidOpen}
+      />
       <ConfirmDialog
         open={refreshOpen}
         onOpenChange={setRefreshOpen}

@@ -8,17 +8,14 @@ import { usePathname } from "next/navigation"
 import { BottomNav } from "@/components/layout/bottom-nav"
 import { KeyboardShortcuts } from "@/components/layout/keyboard-shortcuts"
 import { MobileNav } from "@/components/layout/mobile-nav"
-import { titleFor } from "@/components/layout/nav"
+import { fabFor, titleFor } from "@/components/layout/nav"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Topbar } from "@/components/layout/topbar"
 import { Button } from "@/components/ui/button"
 import type { ShellSummary } from "@/types/view"
 
-/** Pages where the mobile floating "Add client" button makes sense. */
-const FAB_PATHS = new Set(["/dashboard", "/clients"])
-
 // docs/06 §2 + docs/12 §3/§8: sidebar ≥768px (rail below 1024px),
-// topbar, and on mobile a drawer, bottom nav and floating "Add client".
+// topbar, and on mobile a drawer, bottom nav and a floating "+" (docs/14 §7).
 export function AppShell({
   summary,
   crumbs,
@@ -31,7 +28,7 @@ export function AppShell({
 }) {
   const pathname = usePathname()
   const [navOpen, setNavOpen] = React.useState(false)
-  const showFab = FAB_PATHS.has(pathname)
+  const fab = fabFor(pathname)
 
   return (
     <div className="min-h-dvh md:pl-18 lg:pl-60">
@@ -46,7 +43,7 @@ export function AppShell({
       <Topbar
         title={titleFor(pathname)}
         crumbs={crumbs}
-        hideSearch={pathname === "/clients"}
+        hideSearch={pathname === "/subscriptions"}
         unread={summary.unreadNotifications}
         onOpenMenu={() => setNavOpen(true)}
       />
@@ -71,15 +68,15 @@ export function AppShell({
         summary={summary}
       />
 
-      {showFab && (
+      {fab && (
         <Button
           asChild
           size="lg"
           className="fixed right-4 bottom-[calc(3.5rem+1rem+env(safe-area-inset-bottom))] z-30 h-12 rounded-full px-5 shadow-lg md:hidden"
         >
-          <Link href="/clients/new">
+          <Link href={fab.href}>
             <PlusIcon />
-            Add client
+            {fab.label}
           </Link>
         </Button>
       )}

@@ -72,28 +72,59 @@ const s = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between" },
   seller: { width: "55%", paddingRight: 16 },
   // Left-aligned with the text below (contain alone centres it in its box).
-  logo: { height: 34, maxWidth: 140, objectFit: "contain", objectPositionX: 0, marginBottom: 10 },
+  logo: {
+    height: 34,
+    maxWidth: 140,
+    objectFit: "contain",
+    objectPositionX: 0,
+    marginBottom: 10,
+  },
   sellerName: { fontSize: 11, fontWeight: 600 },
   // No logo: the business name is the logo (14.5 pt ≈ 19 px), tagline under it.
-  wordmark: { fontSize: 14.5, lineHeight: 1.25, fontWeight: 600, color: C.ink, letterSpacing: -0.15 },
+  wordmark: {
+    fontSize: 14.5,
+    lineHeight: 1.25,
+    fontWeight: 600,
+    color: C.ink,
+    letterSpacing: -0.15,
+  },
   tagline: { fontSize: 9.5, lineHeight: 1.35, color: C.muted, marginTop: 2 },
   wordmarkBlock: { marginBottom: 8 },
   muted: { color: C.muted },
   right: { width: "45%", alignItems: "flex-end" },
   // Explicit line heights: the page's 1.4 multiplier gave the 20 pt title a
   // line box that the number below overlapped.
-  title: { fontSize: 20, lineHeight: 1.3, fontWeight: 600, color: C.brand, letterSpacing: -0.2 },
+  title: {
+    fontSize: 20,
+    lineHeight: 1.3,
+    fontWeight: 600,
+    color: C.brand,
+    letterSpacing: -0.2,
+  },
   number: { fontFamily: "GeistMono", fontSize: 10, lineHeight: 1.3, marginTop: 4 },
   metaRow: { flexDirection: "row", marginTop: 3 },
   metaLabel: { color: C.muted, width: 62, textAlign: "right", marginRight: 10 },
   metaValue: { minWidth: 70, textAlign: "right" },
   status: { marginTop: 8, fontSize: 9, fontWeight: 500 },
-  section: { marginTop: 26, paddingTop: 14, borderTopWidth: 0.75, borderTopColor: C.line },
+  section: {
+    marginTop: 26,
+    paddingTop: 14,
+    borderTopWidth: 0.75,
+    borderTopColor: C.line,
+  },
   label: { fontSize: 8.5, color: C.muted, fontWeight: 500, marginBottom: 3 },
   // Leaves the right side free for the "Paid on" mark, so long names wrap
   // instead of running under it.
   billBlock: { width: "62%" },
   billName: { fontSize: 10.5, fontWeight: 500 },
+  companyBlock: {
+    marginTop: 4,
+    marginBottom: 4,
+    paddingLeft: 7,
+    borderLeftWidth: 1.5,
+    borderLeftColor: C.line,
+  },
+  companyName: { fontWeight: 500 },
   table: { marginTop: 26 },
   th: {
     flexDirection: "row",
@@ -226,7 +257,21 @@ export function InvoicePdf({ invoice: inv }: { invoice: InvoiceDocumentData }) {
           <View style={s.billBlock}>
             <Text style={s.label}>Bill to</Text>
             <Text style={s.billName}>{bill.name}</Text>
-            {bill.company ? <Text style={s.muted}>{bill.company}</Text> : null}
+            {/* docs/14 §5: the subscription's company, under the client. */}
+            {bill.company ? (
+              <View style={s.companyBlock}>
+                <Text style={s.companyName}>{bill.company.name}</Text>
+                {bill.company.email ? (
+                  <Text style={s.muted}>{bill.company.email}</Text>
+                ) : null}
+                {bill.company.phone ? (
+                  <Text style={s.muted}>{formatPhone(bill.company.phone)}</Text>
+                ) : null}
+                {bill.company.address ? (
+                  <Text style={s.muted}>{bill.company.address}</Text>
+                ) : null}
+              </View>
+            ) : null}
             {bill.email ? <Text style={s.muted}>{bill.email}</Text> : null}
             {bill.phone ? <Text style={s.muted}>{formatPhone(bill.phone)}</Text> : null}
             {bill.address ? <Text style={s.muted}>{bill.address}</Text> : null}
@@ -246,7 +291,9 @@ export function InvoicePdf({ invoice: inv }: { invoice: InvoiceDocumentData }) {
               <Text style={s.cDesc}>{it.description}</Text>
               <Text style={s.cPeriod}>{it.periodLabel}</Text>
               <Text style={s.cQty}>{it.quantity}</Text>
-              <Text style={[s.cAmt, s.money]}>{formatMoney(it.amount, inv.currency)}</Text>
+              <Text style={[s.cAmt, s.money]}>
+                {formatMoney(it.amount, inv.currency)}
+              </Text>
             </View>
           ))}
 
@@ -270,7 +317,9 @@ export function InvoicePdf({ invoice: inv }: { invoice: InvoiceDocumentData }) {
             ) : null}
             <View style={s.grand}>
               <Text>Total</Text>
-              <Text style={[s.money, { fontWeight: 500 }]}>{formatMoney(inv.total, inv.currency)}</Text>
+              <Text style={[s.money, { fontWeight: 500 }]}>
+                {formatMoney(inv.total, inv.currency)}
+              </Text>
             </View>
           </View>
         </View>
@@ -305,7 +354,9 @@ export function InvoicePdf({ invoice: inv }: { invoice: InvoiceDocumentData }) {
 
         <View style={s.pageNo} fixed>
           <Text>{inv.number}</Text>
-          <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
+          <Text
+            render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
+          />
         </View>
       </Page>
     </Document>

@@ -4,6 +4,7 @@ import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
 
 import { GLOBAL_SEARCH_ID } from "@/components/layout/global-search"
+import { fabFor } from "@/components/layout/nav"
 
 function isTyping(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
@@ -22,7 +23,8 @@ function overlayOpen() {
 }
 
 /**
- * "/" focuses the global search; "N" opens Add client (docs/12 §8).
+ * "/" focuses the global search; "N" opens the page's "Add …" form, else
+ * Add subscription (docs/12 §8, docs/14 §7).
  * Ignored while typing, with modifier keys, or when an overlay is open.
  */
 export function KeyboardShortcuts() {
@@ -35,23 +37,25 @@ export function KeyboardShortcuts() {
       if (isTyping(e.target) || overlayOpen()) return
 
       if (e.key === "/") {
-        // The page's own search (e.g. Clients) wins over the topbar one.
+        // The page's own search (e.g. Subscriptions) wins over the topbar one.
         // Hidden inputs (display: none) have no offsetParent.
-        const search = [
-          ...document.querySelectorAll<HTMLInputElement>(
-            "main [data-search-shortcut]"
-          ),
-        ].find((el) => el.offsetParent !== null) ?? document.getElementById(GLOBAL_SEARCH_ID)
+        const search =
+          [
+            ...document.querySelectorAll<HTMLInputElement>("main [data-search-shortcut]"),
+          ].find((el) => el.offsetParent !== null) ??
+          document.getElementById(GLOBAL_SEARCH_ID)
         if (search && search.offsetParent !== null) {
           e.preventDefault()
           search.focus()
         } else {
           e.preventDefault()
-          router.push("/clients?focus=search")
+          router.push("/subscriptions?focus=search")
         }
-      } else if ((e.key === "n" || e.key === "N") && pathname !== "/clients/new") {
+      } else if (e.key === "n" || e.key === "N") {
+        const href = fabFor(pathname)?.href ?? "/subscriptions/new"
+        if (pathname === href) return
         e.preventDefault()
-        router.push("/clients/new")
+        router.push(href)
       }
     }
     window.addEventListener("keydown", onKeyDown)

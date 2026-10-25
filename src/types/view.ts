@@ -11,16 +11,21 @@ export type { ISODate }
 
 export type Colour = "green" | "orange" | "red" | "expired" | "cancelled"
 
-export interface ServiceRow {
+export interface SubscriptionRow {
   id: number
   clientId: number
   clientName: string
+  /** The subscription's company (docs/14), if it has one. */
+  companyId?: number | null
   company?: string | null
+  serviceTypeId: number
+  /** The catalog name, e.g. "Web Hosting". */
+  serviceName: string
   email?: string | null
   phone?: string | null // phone = normalised digits
   /** Client address (optional). */
   address?: string | null
-  /** The client's own currency (new services start in it). */
+  /** The client's default currency (new subscriptions start in it). */
   clientCurrency?: string
   domain: string
   planLabel?: string | null
@@ -34,7 +39,7 @@ export interface ServiceRow {
   colour: Colour
   /** Added in Phase 1: prebuilt client WhatsApp link (docs/07 §2), null without a valid phone. */
   waLink?: string | null
-  /** Added in Phase 1: service notes (for the edit form). */
+  /** Added in Phase 1: subscription notes (for the edit form). */
   notes?: string | null
   /** docs/13 §11: the invoice for the current cycle, if one exists. */
   invoice?: InvoiceChip | null
@@ -44,7 +49,7 @@ export interface ServiceRow {
 
 export type { InvoiceDisplayStatus }
 
-/** "INV-2026-0012 · Unpaid" on service cards and queue rows. */
+/** "INV-2026-0012 · Unpaid" on subscription cards and queue rows. */
 export interface InvoiceChip {
   id: number
   number: string
@@ -58,10 +63,12 @@ export interface InvoiceRow {
   number: string
   clientId: number
   clientName: string
+  /** The company on the invoice's bill-to (docs/14 §5). */
   company?: string | null
   email?: string | null
-  serviceId: number
+  subscriptionId: number
   domain: string
+  serviceName: string
   issueDate: ISODate
   dueDate: ISODate
   total: string
@@ -114,7 +121,7 @@ export interface InvoiceDetail extends InvoiceDocumentData {
   id: number
   rawStatus: InvoiceRow["rawStatus"]
   publicUrl: string
-  service: ServiceRow
+  subscription: SubscriptionRow
   firstSentAt?: string | null
   voidedAt?: string | null
   voidReason?: string | null
@@ -123,7 +130,7 @@ export interface InvoiceDetail extends InvoiceDocumentData {
 
 export interface ReminderRow {
   id: string
-  serviceId: number
+  subscriptionId: number
   stage: number
   channel: "email" | "whatsapp"
   recipient: "client" | "admin"
@@ -131,7 +138,7 @@ export interface ReminderRow {
   lastError?: string | null
   sentAt?: string | null
   waLink?: string | null // prebuilt for whatsapp rows
-  service: ServiceRow
+  subscription: SubscriptionRow
 }
 
 export interface DashboardStats {
@@ -148,19 +155,73 @@ export interface DashboardStats {
 export interface ClientDetail {
   id: number
   name: string
-  company?: string | null
   email?: string | null
   phone?: string | null // normalised digits
+  /** Billing address. */
   address?: string | null
-  /** ISO 4217; new services, invoices and payments for this client start in it. */
+  /** ISO 4217 default currency; new subscriptions (and their invoices and payments) start in it. */
   currency: string
   notes?: string | null
-  services: ServiceRow[]
+  companies: CompanyRow[]
+  subscriptions: SubscriptionRow[]
 }
 
-/** One reminder-queue row per service: its client email and WhatsApp rows for the current stage. */
+/** The next renewal of a client or company, as a timer pill. */
+export interface NextRenewal {
+  renewalDate: ISODate
+  daysLeft: number
+  colour: Colour
+}
+
+/** /clients: one row per client (docs/14 §7). */
+export interface ClientListRow {
+  id: number
+  name: string
+  email?: string | null
+  phone?: string | null
+  currency: string
+  companies: number
+  activeSubscriptions: number
+  next: NextRenewal | null
+}
+
+/** A company, on /companies and the client page (docs/14 §3). */
+export interface CompanyRow {
+  id: number
+  clientId: number
+  clientName: string
+  name: string
+  email?: string | null
+  phone?: string | null
+  address?: string | null
+  subscriptions: number
+  /** For the delete confirmation (docs/14 §3). */
+  invoices: number
+  payments: number
+  next: NextRenewal | null
+}
+
+/** A Service Catalog entry with its usage (docs/14 §2). */
+export interface ServiceTypeRow {
+  id: number
+  name: string
+  /** Decimal string or null. */
+  defaultPrice: string | null
+  isActive: boolean
+  position: number
+  /** Subscriptions using it; > 0 means it can't be deleted. */
+  usedBy: number
+}
+
+/** A select option for pickers and filters. */
+export interface Option {
+  id: number
+  label: string
+}
+
+/** One reminder-queue row per subscription: its client email and WhatsApp rows for the current stage. */
 export interface QueueItem {
-  service: ServiceRow
+  subscription: SubscriptionRow
   stage: number
   email: ReminderRow | null
   whatsapp: ReminderRow | null
@@ -171,7 +232,8 @@ export interface ActivityItem {
   id: string
   /** ISO timestamp */
   at: string
-  kind: "service" | "payment" | "email" | "whatsapp" | "failed" | "skipped" | "invoice"
+  kind:
+    "subscription" | "payment" | "email" | "whatsapp" | "failed" | "skipped" | "invoice"
   text: string
 }
 
@@ -188,7 +250,7 @@ export interface ShellSummary {
   brand: ShellBrand
   /** Reminder rows still needing action (pending, failed, opened). */
   remindersDue: number
-  /** True when any of those rows belongs to an expired service. */
+  /** True when any of those rows belongs to an expired subscription. */
   remindersOverdue: boolean
   unreadNotifications: number
 }
@@ -203,9 +265,11 @@ export interface NotificationItem {
 }
 export interface PaymentRow {
   id: number
-  serviceId: number
+  subscriptionId: number
   domain: string
+  serviceName: string
   clientName: string
+  company?: string | null
   amount: string
   currency: string
   paidOn: ISODate
@@ -234,5 +298,5 @@ export interface ShareData {
   emailText: string
   whatsappText: string
   publicUrl: string
-  service: ServiceRow
+  subscription: SubscriptionRow
 }

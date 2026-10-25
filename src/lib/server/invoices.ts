@@ -79,28 +79,59 @@ export function sellerSnapshot(s: AppSettings, currency: string): SellerSnapshot
   }
 }
 
-export function billToSnapshot(c: {
+type Contact = {
   name: string
-  company: string | null
   email: string | null
   phone: string | null
   address: string | null
-}): BillToSnapshot {
-  return { name: c.name, company: c.company, email: c.email, phone: c.phone, address: c.address }
 }
 
-type ServiceForInvoice = Prisma.ServiceGetPayload<{ include: { client: true } }>
+/**
+ * Bill to: the client, plus the subscription's company when it has one
+ * (docs/14 §5). Reminders still go to the client only.
+ */
+export function billToSnapshot(c: Contact, company?: Contact | null): BillToSnapshot {
+  return {
+    name: c.name,
+    company: company
+      ? {
+          name: company.name,
+          email: company.email,
+          phone: company.phone,
+          address: company.address,
+        }
+      : null,
+    email: c.email,
+    phone: c.phone,
+    address: c.address,
+  }
+}
 
-/** Items and totals from the service as it is now. */
-function amountsFrom(service: ServiceForInvoice, s: AppSettings, periodStart: ISODate, periodEnd: ISODate) {
-  const unit = service.chargeAmount.toFixed(MONEY_SCALE)
+/** What an invoice is built from: the subscription with its client, company and type. */
+export const invoiceSourceInclude = {
+  client: true,
+  company: true,
+  serviceType: { select: { name: true } },
+} satisfies Prisma.SubscriptionInclude
+type SubscriptionForInvoice = Prisma.SubscriptionGetPayload<{
+  include: typeof invoiceSourceInclude
+}>
+
+/** Items and totals from the subscription as it is now. */
+function amountsFrom(
+  subscription: SubscriptionForInvoice,
+  s: AppSettings,
+  periodStart: ISODate,
+  periodEnd: ISODate
+) {
+  const unit = subscription.chargeAmount.toFixed(MONEY_SCALE)
   const totals = invoiceTotals([{ quantity: 1, unitAmount: unit }], {
     taxRate: s.invoices.taxEnabled ? s.invoices.taxRate : "0",
     // Tax rounds to the currency's minor unit (PKR 0, USD 2, KWD 3).
-    decimals: currencyDecimals(service.currency),
+    decimals: currencyDecimals(subscription.currency),
   })
   return {
-    currency: service.currency,
+    currency: subscription.currency,
     subtotal: totals.subtotal,
     discount: totals.discount,
     taxRate: totals.taxRate,
@@ -109,7 +140,11 @@ function amountsFrom(service: ServiceForInvoice, s: AppSettings, periodStart: IS
     items: [
       {
         position: 0,
-        description: itemDescription(service.domain, service.planLabel),
+        description: itemDescription(
+          subscription.serviceType.name,
+          subscription.domain,
+          subscription.planLabel
+        ),
         periodLabel: periodLabel(periodStart, periodEnd),
         quantity: 1,
         unitAmount: unit,
@@ -141,40 +176,56 @@ export interface CreateResult {
 }
 
 /**
- * The invoice for the service's current cycle (periodStart = renewal date).
+ * The invoice for the subscription's current cycle (periodStart = renewal date).
  * Idempotent: returns the existing one if the cycle already has an invoice.
- * Cancelled services never get one. Must run inside a transaction.
+ * Cancelled subscriptions never get one. Must run inside a transaction.
  */
 export async function createCycleInvoice(
   tx: Tx,
-  service: ServiceForInvoice,
+  subscription: SubscriptionForInvoice,
   settings: AppSettings,
   source: "auto" | "manual",
   today: ISODate = clockToday()
 ): Promise<CreateResult | null> {
-  if (service.status !== "active") return null
-  const renewal = fromDbDate(service.renewalDate)
+  if (subscription.status !== "active") return null
+  const renewal = fromDbDate(subscription.renewalDate)
   const existing = await tx.invoice.findUnique({
-    where: { uq_invoice_cycle: { serviceId: service.id, periodStart: service.renewalDate } },
+    where: {
+      uq_invoice_cycle: {
+        subscriptionId: subscription.id,
+        periodStart: subscription.renewalDate,
+      },
+    },
     select: { id: true, number: true },
   })
   if (existing) return { ...existing, created: false }
 
   const { periodStart, periodEnd, dueDate } = cyclePeriod(renewal)
-  const { items, ...amounts } = amountsFrom(service, settings, periodStart, periodEnd)
+  const { items, ...amounts } = amountsFrom(
+    subscription,
+    settings,
+    periodStart,
+    periodEnd
+  )
   const number = await allocateInvoiceNumber(tx, today, settings.invoices.prefix)
   const invoice = await tx.invoice.create({
     data: {
       number,
-      clientId: service.clientId,
-      serviceId: service.id,
+      clientId: subscription.clientId,
+      subscriptionId: subscription.id,
       periodStart: toDbDate(periodStart),
       periodEnd: toDbDate(periodEnd),
       issueDate: toDbDate(today),
       dueDate: toDbDate(dueDate),
       ...amounts,
-      billTo: billToSnapshot(service.client) as unknown as Prisma.InputJsonValue,
-      seller: sellerSnapshot(settings, amounts.currency) as unknown as Prisma.InputJsonValue,
+      billTo: billToSnapshot(
+        subscription.client,
+        subscription.company
+      ) as unknown as Prisma.InputJsonValue,
+      seller: sellerSnapshot(
+        settings,
+        amounts.currency
+      ) as unknown as Prisma.InputJsonValue,
       publicToken: publicToken(),
       items: { create: items },
     },
@@ -183,9 +234,9 @@ export async function createCycleInvoice(
   await tx.notification.createMany({
     data: [
       {
-        serviceId: service.id,
+        subscriptionId: subscription.id,
         type: "invoice_created",
-        title: `Invoice ${number} created for ${service.domain}`,
+        title: `Invoice ${number} created for ${subscription.domain}`,
         body: formatMoney(amounts.total, amounts.currency),
         dedupeKey: `invoice:${invoice.id}`,
       },
@@ -196,42 +247,48 @@ export async function createCycleInvoice(
 }
 
 /**
- * docs/13 §4: every active service with daysLeft ≤ leadDays and no invoice
+ * docs/13 §4: every active subscription with daysLeft ≤ leadDays and no invoice
  * for its cycle gets one. Runs inside runCheck's transaction (same lock).
  */
 export async function createDueInvoices(tx: Tx, settings: AppSettings, today: ISODate) {
-  const horizon = new Date(Date.parse(`${today}T00:00:00Z`) + settings.invoices.leadDays * 86_400_000)
-  const services = await tx.service.findMany({
+  const horizon = new Date(
+    Date.parse(`${today}T00:00:00Z`) + settings.invoices.leadDays * 86_400_000
+  )
+  const subs = await tx.subscription.findMany({
     where: {
       status: "active",
       renewalDate: { lte: horizon },
       // No invoice yet for the current cycle: compared in JS below, since
       // Prisma can't compare two columns.
     },
-    include: { client: true, invoices: { select: { periodStart: true } } },
+    include: { ...invoiceSourceInclude, invoices: { select: { periodStart: true } } },
   })
   let created = 0
-  for (const s of services) {
-    if (s.invoices.some((i) => i.periodStart.getTime() === s.renewalDate.getTime())) continue
+  for (const s of subs) {
+    if (s.invoices.some((i) => i.periodStart.getTime() === s.renewalDate.getTime()))
+      continue
     const res = await createCycleInvoice(tx, s, settings, "auto", today)
     if (res?.created) created++
   }
   return created
 }
 
-/** "Create invoice now" on the service card: any time, also outside the window. */
-export async function createInvoiceNow(serviceId: number): Promise<CreateResult | { error: string }> {
+/** "Create invoice now" on the subscription card: any time, also outside the window. */
+export async function createInvoiceNow(
+  subscriptionId: number
+): Promise<CreateResult | { error: string }> {
   const settings = await getAppSettings()
-  const service = await prisma.service.findUnique({
-    where: { id: serviceId },
-    include: { client: true },
+  const subscription = await prisma.subscription.findUnique({
+    where: { id: subscriptionId },
+    include: invoiceSourceInclude,
   })
-  if (!service) return { error: "Service not found." }
-  if (service.status !== "active") return { error: "Cancelled services don’t get invoices." }
+  if (!subscription) return { error: "Subscription not found." }
+  if (subscription.status !== "active")
+    return { error: "Cancelled subscriptions don’t get invoices." }
   let res: CreateResult | null
   try {
     res = await prisma.$transaction(
-      (tx) => createCycleInvoice(tx, service, settings, "manual"),
+      (tx) => createCycleInvoice(tx, subscription, settings, "manual"),
       { isolationLevel: "ReadCommitted" }
     )
   } catch (e) {
@@ -239,32 +296,42 @@ export async function createInvoiceNow(serviceId: number): Promise<CreateResult 
     // cycle's invoice first. Our transaction rolled back, number included.
     if (!isUniqueViolation(e)) throw e
     const existing = await prisma.invoice.findUnique({
-      where: { uq_invoice_cycle: { serviceId: service.id, periodStart: service.renewalDate } },
+      where: {
+        uq_invoice_cycle: {
+          subscriptionId: subscription.id,
+          periodStart: subscription.renewalDate,
+        },
+      },
       select: { id: true, number: true },
     })
     if (!existing) throw e
     res = { ...existing, created: false }
   }
-  if (!res) return { error: "Cancelled services don’t get invoices." }
+  if (!res) return { error: "Cancelled subscriptions don’t get invoices." }
   if (res.created) await audit("invoice.create", { entity: "invoice", entityId: res.id })
   return res
 }
 
 /* Changes (docs/13 §4–§5) ---------------------------------------------- */
 
-/** Regenerates items and amounts from the current service. Same number. Open invoices only. */
-export async function updateFromService(invoiceId: number): Promise<{ ok: true } | { ok: false; error: string }> {
+/**
+ * Regenerates items, amounts and the bill-to (so a company added since shows
+ * up, docs/14 §5) from the current subscription. Same number. Open invoices only.
+ */
+export async function updateFromSubscription(
+  invoiceId: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const settings = await getAppSettings()
   return prisma.$transaction(async (tx) => {
     const inv = await tx.invoice.findUnique({
       where: { id: invoiceId },
-      include: { service: { include: { client: true } } },
+      include: { subscription: { include: invoiceSourceInclude } },
     })
     if (!inv) return { ok: false as const, error: "Invoice not found." }
     if (!isOpenInvoice(inv.status))
       return { ok: false as const, error: "Paid and void invoices can’t be changed." }
     const { items, ...amounts } = amountsFrom(
-      inv.service,
+      inv.subscription,
       settings,
       fromDbDate(inv.periodStart),
       fromDbDate(inv.periodEnd)
@@ -276,15 +343,32 @@ export async function updateFromService(invoiceId: number): Promise<{ ok: true }
       const old = inv.seller as unknown as SellerSnapshot
       seller = {
         ...old,
-        payment: paymentSnapshot(settings.invoices.accounts, settings.invoices.wallet, amounts.currency),
+        payment: paymentSnapshot(
+          settings.invoices.accounts,
+          settings.invoices.wallet,
+          amounts.currency
+        ),
       } as unknown as Prisma.InputJsonValue
     }
     await tx.invoiceItem.deleteMany({ where: { invoiceId } })
     await tx.invoice.update({
       where: { id: invoiceId },
-      data: { ...amounts, ...(seller ? { seller } : {}), items: { create: items } },
+      data: {
+        ...amounts,
+        ...(seller ? { seller } : {}),
+        billTo: billToSnapshot(
+          inv.subscription.client,
+          inv.subscription.company
+        ) as unknown as Prisma.InputJsonValue,
+        items: { create: items },
+      },
     })
-    await recordInvoiceEvent(invoiceId, "updated", { total: amounts.total, currency: amounts.currency }, { db: tx })
+    await recordInvoiceEvent(
+      invoiceId,
+      "updated",
+      { total: amounts.total, currency: amounts.currency },
+      { db: tx }
+    )
     return { ok: true as const }
   })
 }
@@ -309,7 +393,12 @@ export async function refreshBusinessDetails(
       return { ok: false as const, error: "Paid and void invoices can’t be changed." }
     await tx.invoice.update({
       where: { id: invoiceId },
-      data: { seller: sellerSnapshot(settings, inv.currency) as unknown as Prisma.InputJsonValue },
+      data: {
+        seller: sellerSnapshot(
+          settings,
+          inv.currency
+        ) as unknown as Prisma.InputJsonValue,
+      },
     })
     await recordInvoiceEvent(invoiceId, "details_refreshed", undefined, { db: tx })
     return { ok: true as const }
@@ -317,24 +406,29 @@ export async function refreshBusinessDetails(
 }
 
 /**
- * Inside renewService's transaction (docs/13 §5): the open invoice for the
+ * Inside renewSubscription's transaction (docs/13 §5): the open invoice for the
  * renewed cycle becomes paid and is linked to the payment.
  */
 export async function markCycleInvoicePaid(
   tx: Tx,
-  serviceId: number,
+  subscriptionId: number,
   cycle: Date,
   payment: { id: number; paidOn: ISODate }
 ) {
   const inv = await tx.invoice.findUnique({
-    where: { uq_invoice_cycle: { serviceId, periodStart: cycle } },
+    where: { uq_invoice_cycle: { subscriptionId, periodStart: cycle } },
   })
   if (!inv || !isOpenInvoice(inv.status)) return null
   await tx.invoice.update({
     where: { id: inv.id },
     data: { status: "paid", paidAt: toDbDate(payment.paidOn), paymentId: payment.id },
   })
-  await recordInvoiceEvent(inv.id, "paid", { paymentId: payment.id, paidOn: payment.paidOn }, { db: tx })
+  await recordInvoiceEvent(
+    inv.id,
+    "paid",
+    { paymentId: payment.id, paidOn: payment.paidOn },
+    { db: tx }
+  )
   return inv.id
 }
 
@@ -342,20 +436,26 @@ export async function voidInvoice(invoiceId: number, reason: string | null) {
   return prisma.$transaction(async (tx) => {
     const inv = await tx.invoice.findUnique({ where: { id: invoiceId } })
     if (!inv) return { ok: false as const, error: "Invoice not found." }
-    if (inv.status === "paid") return { ok: false as const, error: "Paid invoices can’t be voided." }
+    if (inv.status === "paid")
+      return { ok: false as const, error: "Paid invoices can’t be voided." }
     if (inv.status === "void") return { ok: true as const }
     await tx.invoice.update({
       where: { id: invoiceId },
       data: { status: "void", voidedAt: new Date(), voidReason: reason },
     })
-    await recordInvoiceEvent(invoiceId, "voided", reason ? { reason } : undefined, { db: tx })
+    await recordInvoiceEvent(invoiceId, "voided", reason ? { reason } : undefined, {
+      db: tx,
+    })
     return { ok: true as const }
   })
 }
 
 /** docs/13 §8: a new token; the old link stops working at once. */
 export async function regeneratePublicLink(invoiceId: number) {
-  const inv = await prisma.invoice.findUnique({ where: { id: invoiceId }, select: { id: true } })
+  const inv = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    select: { id: true },
+  })
   if (!inv) return null
   const token = publicToken()
   await prisma.invoice.update({

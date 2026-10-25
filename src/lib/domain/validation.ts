@@ -4,7 +4,11 @@ import { z } from "zod"
 
 import { currencyDecimals, currencySchema } from "@/lib/domain/currency"
 import { addDays, isISODate, type ISODate } from "@/lib/domain/dates"
-import { isValidDomain, normaliseDomain } from "@/lib/domain/hostname"
+import {
+  isValidDomain,
+  looksLikeDomain,
+  normaliseIdentifier,
+} from "@/lib/domain/hostname"
 import { toUnits } from "@/lib/domain/money"
 import { normalisePhone } from "@/lib/domain/whatsapp"
 
@@ -67,13 +71,13 @@ export const paymentAmount = z
   )
 
 /**
- * Renew / Mark paid (docs/04 §6, docs/06 §4.8). `currency` is the service's:
+ * Renew / Mark paid (docs/04 §6, docs/06 §4.8). `currency` is the subscription's:
  * the amount may not have more decimals than it allows.
  */
 export function renewSchema(today: ISODate, currency?: string) {
   return z
     .object({
-      serviceId: z.number().int().positive(),
+      subscriptionId: z.number().int().positive(),
       amount: currency
         ? paymentAmount.superRefine((s, ctx) => {
             const issue = AMOUNT_RE.test(s) ? amountDecimalsIssue(s, currency) : null
@@ -95,13 +99,31 @@ export function renewSchema(today: ISODate, currency?: string) {
 export type RenewInput = z.input<ReturnType<typeof renewSchema>>
 export type RenewData = z.output<ReturnType<typeof renewSchema>>
 
-/* Clients and services (docs/04 §8) --------------------------------- */
+/* Clients, companies, the catalog and subscriptions (docs/04 §8, docs/14) */
 
 const text = (max: number) =>
   z
     .string()
     .trim()
     .max(max, `Keep it under ${max.toLocaleString("en-US")} characters`)
+
+const emailField = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .max(190, "Keep it under 190 characters")
+  .refine(
+    (v) => v === "" || z.email().safeParse(v).success,
+    "Enter a valid email address"
+  )
+
+const phoneField = z
+  .string()
+  .trim()
+  .refine(
+    (v) => v === "" || normalisePhone(v) !== null,
+    "Enter a valid number, like 0300 1234567"
+  )
 
 /** Form values are strings ("" = empty); the parsed output uses null for empty. */
 export const clientSchema = z
@@ -111,26 +133,11 @@ export const clientSchema = z
       .trim()
       .min(2, "Enter the client's name")
       .max(150, "Keep it under 150 characters"),
-    company: text(150),
-    email: z
-      .string()
-      .trim()
-      .toLowerCase()
-      .max(190, "Keep it under 190 characters")
-      .refine(
-        (v) => v === "" || z.email().safeParse(v).success,
-        "Enter a valid email address"
-      ),
-    phone: z
-      .string()
-      .trim()
-      .refine(
-        (v) => v === "" || normalisePhone(v) !== null,
-        "Enter a valid number, like 0300 1234567"
-      ),
-    /** Optional; printed under the client on invoices (Bill to). */
+    email: emailField,
+    phone: phoneField,
+    /** Billing address; printed under the client on invoices (Bill to). */
     address: text(300).optional(),
-    /** New services (and so their invoices and payments) start in it. */
+    /** Default currency: new subscriptions (and so their invoices and payments) start in it. */
     currency: currencySchema,
     notes: text(2000),
   })
@@ -146,13 +153,76 @@ export const clientSchema = z
   })
   .transform((c) => ({
     name: c.name,
-    company: c.company || null,
     email: c.email || null,
     phone: c.phone ? normalisePhone(c.phone) : null,
     address: c.address || null,
     currency: c.currency,
     notes: c.notes || null,
   }))
+
+/** Select values arrive as strings; ids are positive integers. */
+const requiredId = (message: string) =>
+  z
+    .union([z.number(), z.string()])
+    .transform((v) => Number(v))
+    .refine((n) => Number.isInteger(n) && n > 0, message)
+
+/** "" or null = none. */
+const optionalId = (message: string) =>
+  z
+    .union([z.number(), z.string(), z.null()])
+    .transform((v) => (v === null || v === "" ? null : Number(v)))
+    .refine((n) => n === null || (Number.isInteger(n) && n > 0), message)
+
+/** A client's company (docs/14 §3): only the name is required. */
+export const companySchema = z
+  .object({
+    clientId: requiredId("Choose the client"),
+    name: z
+      .string()
+      .trim()
+      .min(2, "Enter the company name")
+      .max(150, "Keep it under 150 characters"),
+    email: emailField,
+    phone: phoneField,
+    address: text(300),
+  })
+  .strict()
+  .transform((c) => ({
+    clientId: c.clientId,
+    name: c.name,
+    email: c.email || null,
+    phone: c.phone ? normalisePhone(c.phone) : null,
+    address: c.address || null,
+  }))
+
+/** Optional money: "" = none. */
+const optionalAmount = z
+  .string()
+  .trim()
+  .transform((s) => s.replace(/,/g, ""))
+  .pipe(
+    z
+      .string()
+      .refine(
+        (s) => s === "" || AMOUNT_RE.test(s),
+        "Enter an amount like 6500 or 6500.50"
+      )
+  )
+
+/** A Service Catalog entry (docs/14 §2). */
+export const serviceTypeSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(2, "Enter the service name")
+      .max(100, "Keep it under 100 characters"),
+    defaultPrice: optionalAmount,
+    isActive: z.boolean(),
+  })
+  .strict()
+  .transform((t) => ({ ...t, defaultPrice: t.defaultPrice || null }))
 
 const chargeAmount = z
   .string()
@@ -161,26 +231,41 @@ const chargeAmount = z
   .pipe(
     z
       .string()
-      .min(1, "Enter the yearly charge")
+      .min(1, "Enter the renewal charge")
       .regex(AMOUNT_RE, "Enter an amount like 6500 or 6500.50")
   )
 
-export const serviceSchema = z
+/** The domain, or another identifier when it isn't one (docs/14 §1). */
+const identifier = z
+  .string()
+  .transform(normaliseIdentifier)
+  .superRefine((s, ctx) => {
+    const issue =
+      s.length === 0
+        ? "Enter the domain or an identifier"
+        : looksLikeDomain(s)
+          ? isValidDomain(s)
+            ? null
+            : "Enter a domain like noordental.pk"
+          : s.length < 2
+            ? "Enter at least 2 characters"
+            : s.length > 190
+              ? "Keep it under 190 characters"
+              : null
+    if (issue) ctx.addIssue({ code: "custom", message: issue })
+  })
+
+export const subscriptionSchema = z
   .object({
-    domain: z
-      .string()
-      .transform(normaliseDomain)
-      .pipe(
-        z
-          .string()
-          .min(1, "Enter the domain")
-          .refine(isValidDomain, "Enter a domain like noordental.pk")
-      ),
+    clientId: requiredId("Choose the client"),
+    companyId: optionalId("Choose a company"),
+    serviceTypeId: requiredId("Choose the service"),
+    domain: identifier,
     planLabel: text(100),
     startDate: z.string().refine(isISODate, "Enter a valid date"),
     renewalDate: z.string().refine(isISODate, "Enter a valid date"),
     chargeAmount,
-    /** Starts as the client's currency; can be overridden per service. */
+    /** Starts as the client's currency; can be overridden per subscription. */
     currency: currencySchema,
     remindersEnabled: z.boolean(),
     notes: text(2000),
@@ -198,17 +283,14 @@ export const serviceSchema = z
   })
   .transform((s) => ({ ...s, planLabel: s.planLabel || null, notes: s.notes || null }))
 
-export const newClientSchema = z
-  .object({ client: clientSchema, service: serviceSchema })
-  .strict()
-
 export type ClientInput = z.input<typeof clientSchema>
 export type ClientData = z.output<typeof clientSchema>
-export type ServiceInput = z.input<typeof serviceSchema>
-export type ServiceData = z.output<typeof serviceSchema>
-export type NewClientInput = z.input<typeof newClientSchema>
-export type NewClientData = z.output<typeof newClientSchema>
-
+export type CompanyInput = z.input<typeof companySchema>
+export type CompanyData = z.output<typeof companySchema>
+export type ServiceTypeInput = z.input<typeof serviceTypeSchema>
+export type ServiceTypeData = z.output<typeof serviceTypeSchema>
+export type SubscriptionInput = z.input<typeof subscriptionSchema>
+export type SubscriptionData = z.output<typeof subscriptionSchema>
 /** Start dates more than a day ahead are allowed but worth a warning (docs/04 §8). */
 export function startDateWarning(startDate: string, today: ISODate): string | null {
   return isISODate(startDate) && startDate > addDays(today, 1)
@@ -216,7 +298,7 @@ export function startDateWarning(startDate: string, today: ISODate): string | nu
     : null
 }
 
-/** zod issues → { "client.name": "…" } for RHF setError / action fieldErrors. */
+/** zod issues → { "name": "…" } for RHF setError / action fieldErrors. */
 export function fieldErrorsFrom(error: z.ZodError): Record<string, string> {
   const out: Record<string, string> = {}
   for (const issue of error.issues) {

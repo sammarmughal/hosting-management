@@ -2,7 +2,11 @@ import "server-only"
 
 import type { Prisma } from "@/generated/prisma/client"
 import { addDays, daysLeft as daysBetween } from "@/lib/domain/dates"
-import { adminEmail as renderAdminEmail, adminWhatsappText, clientEmail } from "@/lib/domain/messages"
+import {
+  adminEmail as renderAdminEmail,
+  adminWhatsappText,
+  clientEmail,
+} from "@/lib/domain/messages"
 import { checkHorizon, checkIsDue, planCheck } from "@/lib/domain/reminder-engine"
 import { linkProvider } from "@/lib/domain/whatsapp"
 import { audit } from "@/lib/server/audit"
@@ -19,8 +23,13 @@ import {
   recordInvoiceEvent,
 } from "@/lib/server/invoices"
 import { getAppSettings, getTemplate, updateSettings } from "@/lib/server/settings"
-import { messageInvoice, serviceInclude, toServiceRow, viewContext } from "@/lib/server/view"
-import type { ServiceRow } from "@/types/view"
+import {
+  messageInvoice,
+  subscriptionInclude,
+  toSubscriptionRow,
+  viewContext,
+} from "@/lib/server/view"
+import type { SubscriptionRow } from "@/types/view"
 
 // The reminder check (docs/04 §4) and sending (docs/04 §5). There is no
 // cron: runCheck runs on dashboard load (throttled) and from "Check now",
@@ -41,14 +50,16 @@ async function tryCheckLock(tx: Tx): Promise<boolean> {
   const [row] = await tx.$queryRaw<{ n: bigint | number }[]>`
     SELECT COUNT(*) AS n FROM app_locks WHERE name = ${LOCK_NAME}`
   if (Number(row?.n ?? 0) === 0)
-    throw new Error(`The "${LOCK_NAME}" lock row is missing: run the database migrations.`)
+    throw new Error(
+      `The "${LOCK_NAME}" lock row is missing: run the database migrations.`
+    )
   return false
 }
 
 export interface CheckResult {
   /** false when it was throttled or another request held the lock. */
   ran: boolean
-  servicesChecked: number
+  subscriptionsChecked: number
   queuedNew: number
   skipped: number
   notificationsNew: number
@@ -66,7 +77,7 @@ export async function runCheck({
   const settings = await getAppSettings()
   const result: CheckResult = {
     ran: false,
-    servicesChecked: 0,
+    subscriptionsChecked: 0,
     queuedNew: 0,
     skipped: 0,
     notificationsNew: 0,
@@ -87,10 +98,10 @@ export async function runCheck({
       // anyway; the lock just avoids the wasted work.
       if (!(await tryCheckLock(tx))) return false
 
-      const services =
+      const subs =
         horizon === null
           ? []
-          : await tx.service.findMany({
+          : await tx.subscription.findMany({
               where: {
                 status: "active",
                 remindersEnabled: true,
@@ -106,7 +117,7 @@ export async function runCheck({
               },
             })
       const plans = planCheck(
-        services.map((s) => ({
+        subs.map((s) => ({
           id: s.id,
           domain: s.domain,
           renewalDate: fromDbDate(s.renewalDate),
@@ -123,16 +134,19 @@ export async function runCheck({
           hasAdminWhatsapp: settings.adminWhatsapp !== "",
         }
       )
-      result.servicesChecked = services.length
+      result.subscriptionsChecked = subs.length
 
       // Skip superseded stages of this cycle and leftovers from older cycles.
-      const byService = new Map(plans.map((p) => [p.serviceId, p]))
+      const byService = new Map(plans.map((p) => [p.subscriptionId, p]))
       const open = await tx.reminder.findMany({
-        where: { serviceId: { in: [...byService.keys()] }, status: { in: [...OPEN] } },
-        select: { id: true, serviceId: true, cycleDate: true, stage: true },
+        where: {
+          subscriptionId: { in: [...byService.keys()] },
+          status: { in: [...OPEN] },
+        },
+        select: { id: true, subscriptionId: true, cycleDate: true, stage: true },
       })
       const stale = open.filter((r) => {
-        const p = byService.get(r.serviceId)
+        const p = byService.get(r.subscriptionId)
         return !!p && (fromDbDate(r.cycleDate) !== p.cycle || r.stage > p.stage)
       })
       if (stale.length) {
@@ -145,7 +159,7 @@ export async function runCheck({
 
       const rows = plans.flatMap((p) =>
         p.rows.map((r) => ({
-          serviceId: p.serviceId,
+          subscriptionId: p.subscriptionId,
           cycleDate: toDbDate(p.cycle),
           stage: p.stage,
           channel: r.channel,
@@ -159,12 +173,15 @@ export async function runCheck({
       if (plans.length)
         result.notificationsNew = (
           await tx.notification.createMany({
-            data: plans.map((p) => ({ serviceId: p.serviceId, ...p.notification })),
+            data: plans.map((p) => ({
+              subscriptionId: p.subscriptionId,
+              ...p.notification,
+            })),
             skipDuplicates: true,
           })
         ).count
 
-      // docs/13 §4: invoices for active services inside the lead window.
+      // docs/13 §4: invoices for active subscriptions inside the lead window.
       result.invoicesNew = await createDueInvoices(tx, settings, today)
 
       result.lastCheckAt = now.toISOString()
@@ -202,24 +219,27 @@ export async function runCheck({
 export type SendResult = { ok: true; sentAt: string } | { ok: false; error: string }
 
 const reminderInclude = {
-  service: { include: serviceInclude },
+  subscription: { include: subscriptionInclude },
 } satisfies Prisma.ReminderInclude
 
 /** Client email for one reminder row (docs/04 §5.1). The SMTP error is stored on the row. */
 export async function sendReminderEmail(id: bigint): Promise<SendResult> {
-  const row = await prisma.reminder.findUnique({ where: { id }, include: reminderInclude })
+  const row = await prisma.reminder.findUnique({
+    where: { id },
+    include: reminderInclude,
+  })
   if (!row || row.channel !== "email" || row.recipient !== "client")
     return { ok: false, error: "Reminder not found." }
   if (row.status !== "pending" && row.status !== "failed")
     return { ok: false, error: "This reminder was already handled." }
-  const to = row.service.client.email
+  const to = row.subscription.client.email
   if (!to) return { ok: false, error: "This client has no email address." }
-  return deliverClientEmail(row.id, row.service, to)
+  return deliverClientEmail(row.id, row.subscription, to)
 }
 
 async function deliverClientEmail(
   id: bigint,
-  service: Prisma.ServiceGetPayload<{ include: typeof serviceInclude }>,
+  subscription: Prisma.SubscriptionGetPayload<{ include: typeof subscriptionInclude }>,
   to: string
 ): Promise<SendResult> {
   const [settings, template, ctx] = await Promise.all([
@@ -227,10 +247,10 @@ async function deliverClientEmail(
     getTemplate("client_email"),
     viewContext(),
   ])
-  const view = toServiceRow(service, ctx)
+  const view = toSubscriptionRow(subscription, ctx)
   // docs/13 §10: with an invoice for this cycle, attach the PDF and add the link.
-  const cycleInvoice = service.invoices.find(
-    (i) => i.periodStart.getTime() === service.renewalDate.getTime()
+  const cycleInvoice = subscription.invoices.find(
+    (i) => i.periodStart.getTime() === subscription.renewalDate.getTime()
   )
   const message = clientEmail(
     template,
@@ -261,14 +281,19 @@ async function deliverClientEmail(
     await prisma.$transaction([
       prisma.reminder.update({
         where: { id },
-        data: { status: "failed", attempts: { increment: 1 }, lastError: error, sentAt: at },
+        data: {
+          status: "failed",
+          attempts: { increment: 1 },
+          lastError: error,
+          sentAt: at,
+        },
       }),
       prisma.notification.upsert({
         where: { dedupeKey: `email_failed:${id}` },
         create: {
-          serviceId: service.id,
+          subscriptionId: subscription.id,
           type: "email_failed",
-          title: `Email to ${service.client.name} failed`,
+          title: `Email to ${subscription.client.name} failed`,
           body: error.slice(0, 500),
           dedupeKey: `email_failed:${id}`,
         },
@@ -290,8 +315,11 @@ async function deliverClientEmail(
   return { ok: true, sentAt: at.toISOString() }
 }
 
-/** Distinct services behind a set of admin rows, most urgent first. */
-async function adminRowsAndServices(channel: "email" | "whatsapp", statuses: string[]) {
+/** Distinct subscriptions behind a set of admin rows, most urgent first. */
+async function adminRowsAndSubscriptions(
+  channel: "email" | "whatsapp",
+  statuses: string[]
+) {
   const rows = await prisma.reminder.findMany({
     where: {
       channel,
@@ -301,10 +329,11 @@ async function adminRowsAndServices(channel: "email" | "whatsapp", statuses: str
     include: reminderInclude,
   })
   const ctx = await viewContext()
-  const services = new Map<number, ServiceRow>()
+  const subs = new Map<number, SubscriptionRow>()
   for (const r of rows)
-    if (!services.has(r.serviceId)) services.set(r.serviceId, toServiceRow(r.service, ctx))
-  return { rows, services: [...services.values()], ctx }
+    if (!subs.has(r.subscriptionId))
+      subs.set(r.subscriptionId, toSubscriptionRow(r.subscription, ctx))
+  return { rows, subs: [...subs.values()], ctx }
 }
 
 /** One summary email to the admin (docs/04 §5.2); marks the admin-email rows sent. */
@@ -314,14 +343,17 @@ export async function sendAdminSummaryEmail(): Promise<
   const settings = await getAppSettings()
   if (!settings.adminEmail)
     return { ok: false, error: "Add your admin email in Settings → Business." }
-  const { rows, services, ctx } = await adminRowsAndServices("email", ["pending", "failed"])
-  if (services.length === 0) return { ok: true, count: 0 }
+  const { rows, subs, ctx } = await adminRowsAndSubscriptions("email", [
+    "pending",
+    "failed",
+  ])
+  if (subs.length === 0) return { ok: true, count: 0 }
   const template = await getTemplate("admin_email")
   const ids = rows.map((r) => r.id)
   try {
     await sendMail(settings, {
       to: settings.adminEmail,
-      ...renderAdminEmail(template, services, ctx.business, ctx.today),
+      ...renderAdminEmail(template, subs, ctx.business, ctx.today),
     })
   } catch (err) {
     const error = err instanceof MailError ? err.message : "Email failed"
@@ -333,10 +365,18 @@ export async function sendAdminSummaryEmail(): Promise<
   }
   await prisma.reminder.updateMany({
     where: { id: { in: ids } },
-    data: { status: "sent", sentAt: new Date(), lastError: null, attempts: { increment: 1 } },
+    data: {
+      status: "sent",
+      sentAt: new Date(),
+      lastError: null,
+      attempts: { increment: 1 },
+    },
   })
-  await audit("reminder.email.sent", { entity: "admin_summary", details: { count: services.length } })
-  return { ok: true, count: services.length }
+  await audit("reminder.email.sent", {
+    entity: "admin_summary",
+    details: { count: subs.length },
+  })
+  return { ok: true, count: subs.length }
 }
 
 /** The admin WhatsApp summary link; marks the admin-WhatsApp rows opened (docs/04 §5.3). */
@@ -344,12 +384,21 @@ export async function openAdminSummaryWhatsapp(): Promise<
   { ok: true; url: string } | { ok: false; error: string }
 > {
   const settings = await getAppSettings()
-  const { rows, services, ctx } = await adminRowsAndServices("whatsapp", ["pending", "failed"])
+  const { rows, subs, ctx } = await adminRowsAndSubscriptions("whatsapp", [
+    "pending",
+    "failed",
+  ])
   const prepared = linkProvider.prepare({
     to: settings.adminWhatsapp,
-    text: adminWhatsappText(await getTemplate("admin_whatsapp"), services, ctx.business, ctx.today),
+    text: adminWhatsappText(
+      await getTemplate("admin_whatsapp"),
+      subs,
+      ctx.business,
+      ctx.today
+    ),
   })
-  if (!prepared) return { ok: false, error: "Add your WhatsApp number in Settings → Business." }
+  if (!prepared)
+    return { ok: false, error: "Add your WhatsApp number in Settings → Business." }
   if (rows.length)
     await prisma.reminder.updateMany({
       where: { id: { in: rows.map((r) => r.id) } },
@@ -373,10 +422,10 @@ export async function setReminderStatus(
     where: { id },
     data: { status, ...(status === "skipped" ? {} : { sentAt: new Date() }) },
   })
-  await audit(
-    status === "skipped" ? "reminder.skipped" : `reminder.whatsapp.${status}`,
-    { entity: "reminder", entityId: Number(id) }
-  )
+  await audit(status === "skipped" ? "reminder.skipped" : `reminder.whatsapp.${status}`, {
+    entity: "reminder",
+    entityId: Number(id),
+  })
   return { ok: true }
 }
 
@@ -384,21 +433,27 @@ export async function setReminderStatus(
  * A reminder outside the stages (docs/07 §2): logged with stage = the
  * current days left, then sent like any client email.
  */
-export async function sendManualEmail(serviceId: number): Promise<SendResult> {
-  const service = await prisma.service.findUnique({
-    where: { id: serviceId },
-    include: serviceInclude,
+export async function sendManualEmail(subscriptionId: number): Promise<SendResult> {
+  const subscription = await prisma.subscription.findUnique({
+    where: { id: subscriptionId },
+    include: subscriptionInclude,
   })
-  if (!service) return { ok: false, error: "Service not found." }
-  const to = service.client.email
+  if (!subscription) return { ok: false, error: "Subscription not found." }
+  const to = subscription.client.email
   if (!to) return { ok: false, error: "This client has no email address." }
-  const cycle = service.renewalDate
+  const cycle = subscription.renewalDate
   const stage = daysBetween(fromDbDate(cycle), clockToday())
-  const key = { serviceId, cycleDate: cycle, stage, channel: "email", recipient: "client" } as const
+  const key = {
+    subscriptionId,
+    cycleDate: cycle,
+    stage,
+    channel: "email",
+    recipient: "client",
+  } as const
   const row = await prisma.reminder.upsert({
     where: { uq_reminder: key },
     create: key,
     update: {},
   })
-  return deliverClientEmail(row.id, service, to)
+  return deliverClientEmail(row.id, subscription, to)
 }

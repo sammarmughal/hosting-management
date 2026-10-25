@@ -1,6 +1,8 @@
-// URL filters for the Reminders log and Payments lists (docs/07 §1).
-// Untrusted query strings in, valid values out.
+// URL filters for the Reminders log, Payments, Invoices, Clients and
+// Companies lists (docs/07 §1, docs/14 §8). Untrusted query strings in,
+// valid values out.
 import { isISODate, type ISODate } from "@/lib/domain/dates"
+import { idParam } from "@/lib/subscription-filters"
 import type { ReminderRow } from "@/types/view"
 
 type SearchParams = Record<string, string | string[] | undefined>
@@ -42,6 +44,8 @@ export const REMINDER_STATUSES: ReminderRow["status"][] = [
 
 export interface ReminderLogParams extends DateRange {
   q: string
+  /** Company id, 0 = any. */
+  company: number
   channel: ReminderRow["channel"] | ""
   status: ReminderRow["status"] | ""
   page: number
@@ -52,6 +56,7 @@ export function parseReminderLogParams(sp: SearchParams): ReminderLogParams {
   const status = first(sp.status)
   return {
     q: first(sp.q).trim().slice(0, 100),
+    company: idParam(sp.company),
     channel: (REMINDER_CHANNELS as readonly string[]).includes(channel)
       ? (channel as ReminderRow["channel"])
       : "",
@@ -81,6 +86,8 @@ export type InvoiceFilter = (typeof INVOICE_FILTERS)[number]
 
 export interface InvoiceParams extends DateRange {
   q: string
+  /** Company id, 0 = any. */
+  company: number
   status: InvoiceFilter
   /** A currency code, or "" for all. */
   currency: string
@@ -92,6 +99,7 @@ export function parseInvoiceParams(sp: SearchParams): InvoiceParams {
   const currency = first(sp.currency).toUpperCase()
   return {
     q: first(sp.q).trim().slice(0, 100),
+    company: idParam(sp.company),
     status: (INVOICE_FILTERS as readonly string[]).includes(status)
       ? (status as InvoiceFilter)
       : "all",
@@ -101,7 +109,53 @@ export function parseInvoiceParams(sp: SearchParams): InvoiceParams {
   }
 }
 
+/* Clients and companies (docs/14 §7) -------------------------------- */
+
+export interface ClientListParams {
+  q: string
+  page: number
+}
+
+export function parseClientListParams(sp: SearchParams): ClientListParams {
+  return { q: first(sp.q).trim().slice(0, 100), page: page(first(sp.page)) }
+}
+
+export interface CompanyListParams {
+  q: string
+  /** Client id, 0 = any. */
+  client: number
+  page: number
+}
+
+export function parseCompanyListParams(sp: SearchParams): CompanyListParams {
+  return {
+    q: first(sp.q).trim().slice(0, 100),
+    client: idParam(sp.client),
+    page: page(first(sp.page)),
+  }
+}
+
+/** `${path}?…` with empty values (and page 1) left out. */
+export function listHref(path: string, params: Record<string, string | number>): string {
+  const qs = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v === "" || v === 0 || (k === "page" && v === 1)) continue
+    qs.set(k, String(v))
+  }
+  const s = qs.toString()
+  return s ? `${path}?${s}` : path
+}
+
 /** True when anything narrows the list (for "Clear filters"). */
-export function isFiltered(p: ReminderLogParams | PaymentParams | InvoiceParams) {
-  return Object.entries(p).some(([k, v]) => k !== "page" && v !== "" && v !== "all")
+export function isFiltered(
+  p:
+    | ReminderLogParams
+    | PaymentParams
+    | InvoiceParams
+    | ClientListParams
+    | CompanyListParams
+) {
+  return Object.entries(p).some(
+    ([k, v]) => k !== "page" && v !== "" && v !== "all" && v !== 0
+  )
 }

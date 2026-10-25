@@ -14,28 +14,33 @@ export interface MessageTemplate {
   body: string
 }
 
+/** message_templates.subject is VARCHAR(190): every section together must fit. */
+export const SUBJECT_MAX = 190
+
 export const DEFAULT_TEMPLATES: Record<TemplateKey, MessageTemplate> = {
+  // docs/14 §6: {{service_name}} is the catalog name ("Web Hosting"), and
+  // {{company_line}} is " (Noor Dental Clinic)" or empty.
   client_email: {
     subject: [
-      "[[before]]Reminder: {domain} hosting renews on {renewal_date}",
-      "[[today]]Today: {domain} hosting expires today",
-      "[[after]]Action needed: {domain} hosting expired on {renewal_date}",
+      "[[before]]Reminder: {service_name} for {domain} renews on {renewal_date}",
+      "[[today]]Today: {domain} expires today",
+      "[[after]]Action needed: {domain} expired on {renewal_date}",
     ].join("\n"),
     body: `[[before]]
 <p>Dear {client_name},</p>
-<p>This is a friendly reminder that the hosting for <b>{domain}</b> will expire on <b>{renewal_date}</b> ({days_text}).</p>
-<p>The yearly renewal charge is <b>{currency} {amount}</b>. Please arrange the payment before the expiry date so your website and emails keep running without interruption.</p>
+<p>This is a friendly reminder that your {service_name} for <b>{domain}</b>{company_line} will expire on <b>{renewal_date}</b> ({days_text}).</p>
+<p>The yearly renewal charge is <b>{currency} {amount}</b>. Please arrange the payment before the expiry date so everything keeps running without interruption.</p>
 <p>If you have already paid, please ignore this message.</p>
 <p>Regards,<br>{business_name}<br>{business_phone}</p>
 [[today]]
 <p>Dear {client_name},</p>
-<p>The hosting for <b>{domain}</b> <b>expires today ({renewal_date})</b>.</p>
-<p>Please pay the renewal charge of <b>{currency} {amount}</b> today to avoid any interruption to your website.</p>
+<p>Your {service_name} for <b>{domain}</b>{company_line} <b>expires today ({renewal_date})</b>.</p>
+<p>Please pay the renewal charge of <b>{currency} {amount}</b> today to avoid any interruption.</p>
 <p>Regards,<br>{business_name}<br>{business_phone}</p>
 [[after]]
 <p>Dear {client_name},</p>
-<p>The hosting for <b>{domain}</b> expired on <b>{renewal_date}</b> ({days_text}).</p>
-<p>To keep your website online, please pay the renewal charge of <b>{currency} {amount}</b> as soon as possible.</p>
+<p>Your {service_name} for <b>{domain}</b>{company_line} expired on <b>{renewal_date}</b> ({days_text}).</p>
+<p>To keep it running, please pay the renewal charge of <b>{currency} {amount}</b> as soon as possible.</p>
 <p>Regards,<br>{business_name}<br>{business_phone}</p>`,
   },
 
@@ -43,17 +48,17 @@ export const DEFAULT_TEMPLATES: Record<TemplateKey, MessageTemplate> = {
     body: `[[before]]
 Assalam-o-Alaikum {client_name},
 
-Reminder: your website hosting for *{domain}* will expire on *{renewal_date}* ({days_text}).
+Reminder: your {service_name} for *{domain}*{company_line} will expire on *{renewal_date}* ({days_text}).
 
 Renewal charge: *{currency} {amount}*
 
-Please renew before the expiry date so your website keeps running. If you have already paid, please ignore this message.
+Please renew before the expiry date so everything keeps running. If you have already paid, please ignore this message.
 
 – {business_name}
 [[today]]
 Assalam-o-Alaikum {client_name},
 
-Your hosting for *{domain}* *expires today* ({renewal_date}).
+Your {service_name} for *{domain}*{company_line} *expires today* ({renewal_date}).
 Renewal charge: *{currency} {amount}*
 
 Please renew today to avoid interruption.
@@ -62,25 +67,25 @@ Please renew today to avoid interruption.
 [[after]]
 Assalam-o-Alaikum {client_name},
 
-Your hosting for *{domain}* expired on *{renewal_date}* ({days_text}).
+Your {service_name} for *{domain}*{company_line} expired on *{renewal_date}* ({days_text}).
 Renewal charge: *{currency} {amount}*
 
-Please renew as soon as possible to keep your website online.
+Please renew as soon as possible to keep it running.
 
 – {business_name}`,
   },
 
   admin_email: {
-    subject: "{count} hosting renewals need attention – {today}",
+    subject: "{count} renewals need attention – {today}",
     body: `<p>Hi,</p>
-<p>These hosting services are due for renewal:</p>
+<p>These subscriptions are due for renewal:</p>
 {summary_table}
 <p>Open the dashboard to send reminders or record payments.</p>`,
   },
 
   admin_whatsapp: {
-    body: `*Hosting renewals – {today}*
-{count} services need attention:
+    body: `*Renewals – {today}*
+{count} subscriptions need attention:
 
 {summary_list}
 
@@ -91,7 +96,7 @@ Open the dashboard to follow up.`,
   invoice_email: {
     subject: "Invoice {{invoice_number}} for {domain}",
     body: `<p>Dear {client_name},</p>
-<p>Please find attached invoice <b>{{invoice_number}}</b> for the hosting renewal of <b>{domain}</b>.</p>
+<p>Please find attached invoice <b>{{invoice_number}}</b> for the {{service_name}} renewal of <b>{domain}</b>{{company_line}}.</p>
 <p>Amount due: <b>{{invoice_total}}</b><br>Due date: <b>{{due_date}}</b></p>
 {{payment_details}}
 <p>You can also view and download it online: <a href="{{invoice_link}}">{{invoice_link}}</a></p>
@@ -101,7 +106,7 @@ Open the dashboard to follow up.`,
   invoice_whatsapp: {
     body: `Assalam-o-Alaikum {client_name},
 
-Your invoice *{{invoice_number}}* for *{domain}* is ready.
+Your invoice *{{invoice_number}}* for {{service_name}} – *{domain}*{{company_line}} is ready.
 Amount: *{{invoice_total}}*
 Due date: *{{due_date}}*
 

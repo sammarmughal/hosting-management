@@ -19,26 +19,39 @@ import { ReminderLogTable } from "@/components/reminder-log-table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatDatePK, todayPK } from "@/lib/domain/dates"
 import { formatDateTimePK } from "@/lib/domain/relative-time"
+import type { ClientTab } from "@/lib/client-tabs"
 import { cn } from "@/lib/utils"
 import type { ActivityItem, InvoiceRow, PaymentRow, ReminderRow } from "@/types/view"
 
-export type ClientTab = "payments" | "invoices" | "log" | "activity"
-
-/** Payments | Invoices | Reminder log | Activity (docs/06 §4.7, docs/13 §11). The tab lives in ?tab=. */
+/**
+ * Overview | Companies | Subscriptions | Invoices | Payments (docs/14 §7).
+ * The tab lives in ?tab=. The server renders the overview summary and the
+ * company and subscription panels; the rest is built here.
+ */
 export function ClientTabs({
   initialTab,
+  overview,
+  companies,
+  subscriptions,
+  companyCount,
+  subscriptionCount,
   payments,
   invoices,
   reminders,
   activity,
-  multipleServices,
+  multipleSubscriptions,
 }: {
   initialTab: ClientTab
+  overview: React.ReactNode
+  companies: React.ReactNode
+  subscriptions: React.ReactNode
+  companyCount: number
+  subscriptionCount: number
   payments: PaymentRow[]
   invoices: InvoiceRow[]
   reminders: ReminderRow[]
   activity: ActivityItem[]
-  multipleServices: boolean
+  multipleSubscriptions: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -47,7 +60,7 @@ export function ClientTabs({
   function change(value: string) {
     const next = value as ClientTab
     setTab(next)
-    router.replace(next === "payments" ? pathname : `${pathname}?tab=${next}`, {
+    router.replace(next === "overview" ? pathname : `${pathname}?tab=${next}`, {
       scroll: false,
     })
   }
@@ -56,54 +69,71 @@ export function ClientTabs({
     <Tabs value={tab} onValueChange={change} className="gap-0">
       <div className="scrollbar-none overflow-x-auto border-b border-border">
         <TabsList variant="line" className="h-12">
-          <TabsTrigger value="payments" className="px-2">
-            Payments <Count n={payments.length} />
+          <TabsTrigger value="overview" className="px-2">
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="companies" className="px-2">
+            Companies <Count n={companyCount} />
+          </TabsTrigger>
+          <TabsTrigger value="subscriptions" className="px-2">
+            Subscriptions <Count n={subscriptionCount} />
           </TabsTrigger>
           <TabsTrigger value="invoices" className="px-2">
             Invoices <Count n={invoices.length} />
           </TabsTrigger>
-          <TabsTrigger value="log" className="px-2">
-            Reminder log <Count n={reminders.length} />
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="px-2">
-            Activity
+          <TabsTrigger value="payments" className="px-2">
+            Payments <Count n={payments.length} />
           </TabsTrigger>
         </TabsList>
       </div>
 
-      <TabsContent value="payments" className="pt-4">
-        <Panel
-          empty={payments.length === 0}
-          emptyText="No payments recorded yet. Use Renew / Mark paid when a client pays."
-        >
-          <PaymentsTable rows={payments} showDomain={multipleServices} />
-        </Panel>
+      <TabsContent value="overview" className="flex flex-col gap-6 pt-4">
+        {overview}
+        <section aria-labelledby="log-title" className="flex flex-col gap-3">
+          <h2 id="log-title" className="text-base font-semibold">
+            Reminder log <Count n={reminders.length} />
+          </h2>
+          <Panel
+            empty={reminders.length === 0}
+            emptyText="No reminders yet for this client."
+          >
+            <ReminderLogTable rows={reminders} showDomain={multipleSubscriptions} />
+          </Panel>
+        </section>
+        <section aria-labelledby="activity-title" className="flex flex-col gap-3">
+          <h2 id="activity-title" className="text-base font-semibold">
+            Activity
+          </h2>
+          <Panel empty={activity.length === 0} emptyText="No activity yet.">
+            <Timeline items={activity} />
+          </Panel>
+        </section>
+      </TabsContent>
+      <TabsContent value="companies" className="pt-4">
+        {companies}
+      </TabsContent>
+      <TabsContent value="subscriptions" className="pt-4">
+        {subscriptions}
       </TabsContent>
       <TabsContent value="invoices" className="pt-4">
         <Panel
           empty={invoices.length === 0}
-          emptyText="No invoices yet. They’re created before each renewal, or with Create invoice now on a service."
+          emptyText="No invoices yet. They’re created before each renewal, or with Create invoice now on a subscription."
         >
           <InvoicesTable rows={invoices} showClient={false} />
         </Panel>
       </TabsContent>
-      <TabsContent value="log" className="pt-4">
+      <TabsContent value="payments" className="pt-4">
         <Panel
-          empty={reminders.length === 0}
-          emptyText="No reminders yet for this client."
+          empty={payments.length === 0}
+          emptyText="No payments recorded yet. Use Record renewal when a client pays."
         >
-          <ReminderLogTable rows={reminders} showDomain={multipleServices} />
-        </Panel>
-      </TabsContent>
-      <TabsContent value="activity" className="pt-4">
-        <Panel empty={activity.length === 0} emptyText="No activity yet.">
-          <Timeline items={activity} />
+          <PaymentsTable rows={payments} showDomain={multipleSubscriptions} />
         </Panel>
       </TabsContent>
     </Tabs>
   )
 }
-
 function Count({ n }: { n: number }) {
   return <span className="text-ink-subtle tabular-nums">{n}</span>
 }
@@ -134,7 +164,7 @@ const ACTIVITY_ICON: Record<
   ActivityItem["kind"],
   { icon: LucideIcon; className: string }
 > = {
-  service: { icon: ServerIcon, className: "text-ink-muted" },
+  subscription: { icon: ServerIcon, className: "text-ink-muted" },
   payment: { icon: CircleCheckIcon, className: "text-green-fg" },
   email: { icon: MailIcon, className: "text-ink-muted" },
   whatsapp: { icon: MessageCircleIcon, className: "text-ink-muted" },
@@ -143,9 +173,9 @@ const ACTIVITY_ICON: Record<
   invoice: { icon: FileTextIcon, className: "text-ink-muted" },
 }
 
-/** Services and payments have a date only; reminders have a time. */
+/** Subscriptions and payments have a date only; reminders have a time. */
 function activityWhen(item: ActivityItem) {
-  return item.kind === "service" || item.kind === "payment"
+  return item.kind === "subscription" || item.kind === "payment"
     ? formatDatePK(todayPK(new Date(item.at)))
     : formatDateTimePK(item.at)
 }

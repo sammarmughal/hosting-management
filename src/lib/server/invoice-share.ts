@@ -2,7 +2,12 @@ import "server-only"
 
 import { daysLeft } from "@/lib/domain/dates"
 import { invoiceFilename, type SellerSnapshot } from "@/lib/domain/invoices"
-import { invoiceEmail, invoiceWhatsappText, oneLine, wrapEmail } from "@/lib/domain/messages"
+import {
+  invoiceEmail,
+  invoiceWhatsappText,
+  oneLine,
+  wrapEmail,
+} from "@/lib/domain/messages"
 import { MONEY_SCALE } from "@/lib/domain/money"
 import { paymentRows } from "@/lib/domain/payment-accounts"
 import { escapeHtml } from "@/lib/domain/templates"
@@ -16,7 +21,7 @@ import { getInvoiceDocument } from "@/lib/server/invoice-queries"
 import { markSent, publicInvoiceUrl, recordInvoiceEvent } from "@/lib/server/invoices"
 import { MailError, sendMail } from "@/lib/server/mail"
 import { getAppSettings, getTemplate } from "@/lib/server/settings"
-import { serviceInclude, toServiceRow, viewContext } from "@/lib/server/view"
+import { subscriptionInclude, toSubscriptionRow, viewContext } from "@/lib/server/view"
 import type { ShareData } from "@/types/view"
 
 // Share invoice (docs/13 §9). Every share is logged in the invoice events and
@@ -24,11 +29,10 @@ import type { ShareData } from "@/types/view"
 
 export type { ShareData }
 
-
 async function loadInvoice(invoiceId: number) {
   return prisma.invoice.findUnique({
     where: { id: invoiceId },
-    include: { service: { include: serviceInclude } },
+    include: { subscription: { include: subscriptionInclude } },
   })
 }
 
@@ -40,7 +44,7 @@ export async function buildShareData(invoiceId: number): Promise<ShareData | nul
     getTemplate("invoice_email"),
     getTemplate("invoice_whatsapp"),
   ])
-  const service = toServiceRow(inv.service, ctx)
+  const subscription = toSubscriptionRow(inv.subscription, ctx)
   const message = {
     number: inv.number,
     link: publicInvoiceUrl(inv.publicToken),
@@ -50,31 +54,37 @@ export async function buildShareData(invoiceId: number): Promise<ShareData | nul
     // The account the invoice itself carries, so the email matches its PDF.
     payment: paymentRows((inv.seller as unknown as SellerSnapshot | null)?.payment),
   }
-  const email = inv.service.client.email
-  const phone = normalisePhone(inv.service.client.phone)
-  const rendered = invoiceEmail(emailT, service, ctx.business, ctx.today, message)
+  const email = inv.subscription.client.email
+  const phone = normalisePhone(inv.subscription.client.phone)
+  const rendered = invoiceEmail(emailT, subscription, ctx.business, ctx.today, message)
   const voided = inv.status === "void" ? "This invoice is void" : null
   return {
     invoiceId: inv.id,
     number: inv.number,
     rawStatus: inv.status,
     clientId: inv.clientId,
-    clientName: inv.service.client.name,
+    clientName: inv.subscription.client.name,
     email,
     phone,
     emailUnavailable: voided ?? (email ? null : "No email address for this client"),
     whatsappUnavailable:
       voided ??
-      (inv.service.client.phone
+      (inv.subscription.client.phone
         ? phone
           ? null
           : "The client's WhatsApp number isn't valid"
         : "No WhatsApp number for this client"),
     emailSubject: rendered.subject,
     emailText: rendered.text,
-    whatsappText: invoiceWhatsappText(waT, service, ctx.business, ctx.today, message),
+    whatsappText: invoiceWhatsappText(
+      waT,
+      subscription,
+      ctx.business,
+      ctx.today,
+      message
+    ),
     publicUrl: message.link,
-    service,
+    subscription,
   }
 }
 
@@ -94,7 +104,7 @@ export function textToHtml(text: string) {
 
 /** Logs the share in the reminder log (docs/13 §9): a client row for this cycle. */
 async function logReminder(
-  inv: { serviceId: number; periodStart: Date },
+  inv: { subscriptionId: number; periodStart: Date },
   channel: "email" | "whatsapp",
   status: "sent" | "opened" | "failed",
   lastError: string | null = null
@@ -102,7 +112,12 @@ async function logReminder(
   // Prefer the cycle's existing row for this channel (the queue's current
   // stage), so a share updates that row instead of adding a second queue item.
   const existing = await prisma.reminder.findFirst({
-    where: { serviceId: inv.serviceId, cycleDate: inv.periodStart, channel, recipient: "client" },
+    where: {
+      subscriptionId: inv.subscriptionId,
+      cycleDate: inv.periodStart,
+      channel,
+      recipient: "client",
+    },
     orderBy: { stage: "asc" },
   })
   if (existing) {
@@ -119,7 +134,7 @@ async function logReminder(
   }
   const stage = daysLeft(fromDbDate(inv.periodStart), clockToday())
   const key = {
-    serviceId: inv.serviceId,
+    subscriptionId: inv.subscriptionId,
     cycleDate: inv.periodStart,
     stage: Math.max(-32768, Math.min(32767, stage)),
     channel,
@@ -133,7 +148,13 @@ async function logReminder(
   }
   await prisma.reminder.upsert({
     where: { uq_reminder: key },
-    create: { ...key, status, lastError, sentAt: data.sentAt, attempts: channel === "email" ? 1 : 0 },
+    create: {
+      ...key,
+      status,
+      lastError,
+      sentAt: data.sentAt,
+      attempts: channel === "email" ? 1 : 0,
+    },
     update: data,
   })
 }
@@ -148,14 +169,19 @@ export async function shareByEmail(
   const inv = await loadInvoice(invoiceId)
   if (!inv) return { ok: false, error: "Invoice not found." }
   if (inv.status === "void") return { ok: false, error: "This invoice is void." }
-  const to = inv.service.client.email
+  const to = inv.subscription.client.email
   if (!to) return { ok: false, error: "This client has no email address." }
-  const [settings, doc] = await Promise.all([getAppSettings(), getInvoiceDocument(invoiceId)])
+  const [settings, doc] = await Promise.all([
+    getAppSettings(),
+    getInvoiceDocument(invoiceId),
+  ])
   if (!doc) return { ok: false, error: "Invoice not found." }
 
   // Make sure the link is in the body even if it was edited out.
   const link = publicInvoiceUrl(inv.publicToken)
-  const text = edited.text.includes(link) ? edited.text : `${edited.text.trim()}\n\n${link}`
+  const text = edited.text.includes(link)
+    ? edited.text
+    : `${edited.text.trim()}\n\n${link}`
   try {
     const pdf = await renderInvoicePdf(doc.document)
     await sendMail(settings, {
@@ -165,7 +191,7 @@ export async function shareByEmail(
       text,
       attachments: [
         {
-          filename: invoiceFilename(inv.number, inv.service.domain),
+          filename: invoiceFilename(inv.number, inv.subscription.domain),
           content: pdf,
           contentType: "application/pdf",
         },
@@ -188,7 +214,7 @@ export async function shareByEmail(
 export async function recordWhatsappOpened(invoiceId: number) {
   const inv = await loadInvoice(invoiceId)
   if (!inv) return { ok: false as const, error: "Invoice not found." }
-  const to = normalisePhone(inv.service.client.phone)
+  const to = normalisePhone(inv.subscription.client.phone)
   await recordInvoiceEvent(invoiceId, "whatsapp_opened", { to })
   await logReminder(inv, "whatsapp", "opened")
   await markSent(invoiceId)

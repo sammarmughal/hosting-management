@@ -16,24 +16,28 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { deleteClientAction } from "@/actions/clients"
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
+const plural = (n: number, one: string, many = `${one}s`) =>
+  `${n} ${n === 1 ? one : many}`
 
-/** "This deletes 2 services, 3 payments and all reminders." */
-function deleteSummary(services: number, payments: number) {
-  const parts = [plural(services, "service")]
+/** "This deletes 2 companies, 3 subscriptions, 4 payments and all reminders." */
+function deleteSummary(companies: number, subscriptions: number, payments: number) {
+  const parts = [plural(subscriptions, "subscription")]
+  if (companies) parts.unshift(plural(companies, "company", "companies"))
   if (payments) parts.push(plural(payments, "payment"))
-  return `This deletes ${parts.join(", ")} and all reminders.`
+  return `This deletes ${parts.join(", ")}, their invoices and all reminders.`
 }
 
 export function ClientActions({
   clientId,
   clientName,
-  serviceCount,
+  companyCount,
+  subscriptionCount,
   paymentCount,
 }: {
   clientId: number
   clientName: string
-  serviceCount: number
+  companyCount: number
+  subscriptionCount: number
   paymentCount: number
 }) {
   const [confirmOpen, setConfirmOpen] = React.useState(false)
@@ -70,7 +74,10 @@ export function ClientActions({
         onOpenChange={setConfirmOpen}
         title={`Delete ${clientName}?`}
         description={
-          <>{deleteSummary(serviceCount, paymentCount)} This can’t be undone.</>
+          <>
+            {deleteSummary(companyCount, subscriptionCount, paymentCount)} This can’t be
+            undone.
+          </>
         }
         confirmLabel="Delete client"
         onConfirm={async () => {

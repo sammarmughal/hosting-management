@@ -1,46 +1,12 @@
-import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 
-import { ServiceForm } from "@/components/client-form"
-import { PageHeader } from "@/components/page-header"
-import { formatAmount } from "@/lib/domain/money"
-import { currencyOptions } from "@/lib/domain/currency"
-import { getService, getSettings } from "@/lib/data"
-
-type Props = { params: Promise<{ id: string }> }
-
-async function load(params: Props["params"]) {
-  const service = await getService(Number((await params).id))
-  if (!service) notFound()
-  return service
-}
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const service = await load(params)
-  return { title: `Edit ${service.domain}` }
-}
-
-export default async function EditServicePage({ params }: Props) {
-  const [s, settings] = await Promise.all([load(params), getSettings()])
-  return (
-    <>
-      <PageHeader title="Edit service" description={`${s.domain} · ${s.clientName}`} />
-      <ServiceForm
-        mode="edit"
-        serviceId={s.id}
-        clientId={s.clientId}
-        currencies={currencyOptions(settings.enabledCurrencies, s.currency)}
-        defaultValues={{
-          domain: s.domain,
-          planLabel: s.planLabel ?? "",
-          startDate: s.startDate,
-          renewalDate: s.renewalDate,
-          chargeAmount: formatAmount(s.chargeAmount, s.currency),
-          currency: s.currency,
-          remindersEnabled: s.remindersEnabled,
-          notes: s.notes ?? "",
-        }}
-      />
-    </>
-  )
+// The old "Edit service" link (docs/14 §4).
+export default async function OldEditServicePage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const id = Number((await params).id)
+  if (!Number.isInteger(id) || id <= 0) notFound()
+  redirect(`/subscriptions/${id}/edit`)
 }

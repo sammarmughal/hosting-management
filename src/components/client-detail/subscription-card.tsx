@@ -20,6 +20,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog"
 import { RenewDialog } from "@/components/renew-dialog"
 import { StatusBadge } from "@/components/status-badge"
 import { TimerPill } from "@/components/timer-pill"
+import { WithReason } from "@/components/with-reason"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -31,22 +32,24 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { formatDatePK } from "@/lib/domain/dates"
 import { formatMoney } from "@/lib/domain/money"
-import { deleteServiceAction, toggleCancelServiceAction } from "@/actions/clients"
+import {
+  deleteSubscriptionAction,
+  toggleCancelSubscriptionAction,
+} from "@/actions/subscriptions"
 import { createInvoiceNowAction } from "@/actions/invoices"
 import { sendManualEmailAction } from "@/actions/reminders"
 import { InvoiceChip } from "@/components/invoices/invoice-status-badge"
 import { useInvoiceDialogs } from "@/components/invoices/use-invoice-dialogs"
-import { cn } from "@/lib/utils"
-import type { ServiceRow } from "@/types/view"
+import type { SubscriptionRow } from "@/types/view"
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 
-/** One hosting service on the client page (docs/06 §4.7). */
-export function ServiceCard({
-  service: s,
+/** One subscription on the client page (docs/06 §4.7, docs/14 §7). */
+export function SubscriptionCard({
+  subscription: s,
   paymentCount,
 }: {
-  service: ServiceRow
+  subscription: SubscriptionRow
   paymentCount: number
 }) {
   const [renewOpen, setRenewOpen] = React.useState(false)
@@ -61,7 +64,8 @@ export function ServiceCard({
     setCreating(true)
     const res = await attemptAction(() => createInvoiceNowAction(s.id))
     setCreating(false)
-    if (!res.ok || !res.data) return void toast.error(res.ok ? "Couldn’t create the invoice." : res.error)
+    if (!res.ok || !res.data)
+      return void toast.error(res.ok ? "Couldn’t create the invoice." : res.error)
     toast.success(
       res.data.created
         ? `Invoice ${res.data.number} created for ${s.domain}`
@@ -79,7 +83,7 @@ export function ServiceCard({
 
   async function toggleCancel() {
     setToggling(true)
-    const res = await attemptAction(() => toggleCancelServiceAction(s.id))
+    const res = await attemptAction(() => toggleCancelSubscriptionAction(s.id))
     setToggling(false)
     if (!res.ok) return void toast.error(res.error)
     toast.success(
@@ -91,33 +95,39 @@ export function ServiceCard({
 
   return (
     <article
-      aria-labelledby={`svc-${s.id}`}
-      className="overflow-hidden rounded-lg border border-border bg-surface"
+      id={`sub-${s.id}`}
+      aria-labelledby={`sub-${s.id}-title`}
+      className="scroll-mt-24 overflow-hidden rounded-lg border border-border bg-surface target:ring-3 target:ring-ring/30"
     >
       <div className="flex items-start justify-between gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h3 id={`svc-${s.id}`} title={s.domain} className="truncate text-base font-semibold">
+            <h3
+              id={`sub-${s.id}-title`}
+              title={s.domain}
+              className="truncate text-base font-semibold"
+            >
               {s.domain}
             </h3>
             <StatusBadge colour={s.colour} />
             {s.invoice && <InvoiceChip invoice={s.invoice} />}
           </div>
           <p className="mt-1 text-sm text-ink-muted">
-            {s.planLabel ?? "No plan set"}
+            {s.serviceName}
+            {s.planLabel && ` · ${s.planLabel} plan`}
             {!cancelled && !s.remindersEnabled && " · Reminders off"}
           </p>
         </div>
-        <ServiceMenu
-          service={s}
+        <SubscriptionMenu
+          subscription={s}
           busy={toggling}
           onToggleCancel={() => void toggleCancel()}
           onDelete={() => setDeleteOpen(true)}
         />
       </div>
 
-      <div className="flex flex-col gap-4 px-4 py-4 sm:px-5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6">
-        {/* A cancelled service has no timer (docs/10 §2); the badge says Cancelled. */}
+      <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:gap-6 sm:px-5">
+        {/* A cancelled subscription has no timer (docs/10 §2); the badge says Cancelled. */}
         {!cancelled && (
           <TimerPill
             renewalDate={s.renewalDate}
@@ -219,7 +229,7 @@ export function ServiceCard({
           </>
         )}
         <Button asChild variant="ghost" size="sm" className="text-ink-muted max-sm:h-11">
-          <Link href={`/services/${s.id}/edit`}>
+          <Link href={`/subscriptions/${s.id}/edit`}>
             <PencilIcon />
             Edit
           </Link>
@@ -227,8 +237,15 @@ export function ServiceCard({
       </div>
 
       <RenewDialog
-        service={s}
-        invoice={s.invoice && (s.invoice.status === "unpaid" || s.invoice.status === "sent" || s.invoice.status === "overdue") ? s.invoice : null}
+        subscription={s}
+        invoice={
+          s.invoice &&
+          (s.invoice.status === "unpaid" ||
+            s.invoice.status === "sent" ||
+            s.invoice.status === "overdue")
+            ? s.invoice
+            : null
+        }
         open={renewOpen}
         onOpenChange={setRenewOpen}
       />
@@ -239,15 +256,15 @@ export function ServiceCard({
         title={`Delete ${s.domain}?`}
         description={
           <>
-            This deletes the service
+            This deletes the subscription
             {paymentCount ? `, its ${plural(paymentCount, "payment")}` : ""} and all its
             reminders. This can’t be undone. To stop reminders but keep the history,
-            cancel the service instead.
+            cancel the subscription instead.
           </>
         }
-        confirmLabel="Delete service"
+        confirmLabel="Delete subscription"
         onConfirm={async () => {
-          const res = await attemptAction(() => deleteServiceAction(s.id))
+          const res = await attemptAction(() => deleteSubscriptionAction(s.id))
           if (!res.ok) {
             toast.error(res.error)
             return false
@@ -268,34 +285,13 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
-/** Wraps a disabled control so its tooltip still explains why (docs/12 §8). */
-function WithReason({
-  reason,
-  children,
-}: {
-  reason: string | null
-  children: React.ReactNode
-}) {
-  if (!reason) return <>{children}</>
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span tabIndex={0} className={cn("inline-flex rounded-md")}>
-          {children}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{reason}</TooltipContent>
-    </Tooltip>
-  )
-}
-
-function ServiceMenu({
-  service,
+function SubscriptionMenu({
+  subscription: service,
   busy,
   onToggleCancel,
   onDelete,
 }: {
-  service: ServiceRow
+  subscription: SubscriptionRow
   busy: boolean
   onToggleCancel: () => void
   onDelete: () => void
@@ -321,12 +317,12 @@ function ServiceMenu({
       <DropdownMenuContent align="end">
         <DropdownMenuItem disabled={busy} onSelect={onToggleCancel}>
           {cancelled ? <RotateCcwIcon /> : <BanIcon />}
-          {cancelled ? "Reactivate service" : "Cancel service"}
+          {cancelled ? "Reactivate subscription" : "Cancel subscription"}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onSelect={onDelete}>
           <Trash2Icon />
-          Delete service
+          Delete subscription
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

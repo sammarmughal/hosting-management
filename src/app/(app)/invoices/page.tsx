@@ -9,7 +9,7 @@ import { Pagination } from "@/components/pagination"
 import { Button } from "@/components/ui/button"
 import { formatAmount } from "@/lib/domain/money"
 import type { CurrencyTotal } from "@/lib/domain/money"
-import { listInvoices } from "@/lib/data"
+import { companyOptions, listInvoices } from "@/lib/data"
 import { isFiltered, parseInvoiceParams } from "@/lib/list-filters"
 import { hrefWith } from "@/lib/url"
 
@@ -23,17 +23,17 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`
 export default async function InvoicesPage({ searchParams }: Props) {
   const sp = await searchParams
   const params = parseInvoiceParams(sp)
-  const list = await listInvoices(params)
+  const [list, companies] = await Promise.all([listInvoices(params), companyOptions()])
 
   if (list.totalAll === 0) {
     return (
       <div className="rounded-lg border border-border bg-surface">
         <EmptyState
           icon={FileTextIcon}
-          message="No invoices yet. They’re created by the daily check before each renewal, or from a service card."
+          message="No invoices yet. They’re created by the daily check before each renewal, or from a subscription card."
           action={
             <Button asChild variant="outline" size="sm">
-              <Link href="/clients">Go to clients</Link>
+              <Link href="/subscriptions">Go to subscriptions</Link>
             </Button>
           }
         />
@@ -57,13 +57,24 @@ export default async function InvoicesPage({ searchParams }: Props) {
         </Figure>
       </section>
 
-      <InvoicesToolbar params={params} currencies={list.currencies} />
+      <InvoicesToolbar
+        params={params}
+        currencies={list.currencies}
+        companies={companies}
+      />
 
-      <section aria-label="Invoices" className="overflow-hidden rounded-lg border border-border bg-surface">
+      <section
+        aria-label="Invoices"
+        className="overflow-hidden rounded-lg border border-border bg-surface"
+      >
         {list.total === 0 ? (
           <EmptyState
             icon={SearchXIcon}
-            message={params.q ? `No invoices match “${params.q}”.` : "No invoices match these filters."}
+            message={
+              params.q
+                ? `No invoices match “${params.q}”.`
+                : "No invoices match these filters."
+            }
             action={
               isFiltered(params) ? (
                 <Button asChild variant="outline" size="sm">

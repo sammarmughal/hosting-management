@@ -39,16 +39,22 @@ export function InvoiceDocument({
           {s.logo ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={s.logo} alt="" className="mb-3 h-10 w-auto max-w-40 object-contain" />
+              <img
+                src={s.logo}
+                alt=""
+                className="mb-3 h-10 w-auto max-w-40 object-contain"
+              />
               <p className="font-semibold break-words">{s.businessName}</p>
             </>
           ) : (
             // No logo: the business name is the wordmark, with the tagline under it.
             <div className="mb-2">
-              <p className="text-[19px] leading-tight font-semibold tracking-[-0.01em] text-ink break-words">
+              <p className="text-[19px] leading-tight font-semibold tracking-[-0.01em] break-words text-ink">
                 {s.businessName}
               </p>
-              {s.tagline && <p className="mt-0.5 text-sm text-ink-muted break-words">{s.tagline}</p>}
+              {s.tagline && (
+                <p className="mt-0.5 text-sm break-words text-ink-muted">{s.tagline}</p>
+              )}
             </div>
           )}
           <div className="mt-1 space-y-0.5 text-sm text-ink-muted">
@@ -59,7 +65,9 @@ export function InvoiceDocument({
           </div>
         </div>
         <div className="sm:text-right">
-          <h2 className="text-xl font-semibold tracking-[-0.01em] text-brand-700">Invoice</h2>
+          <h2 className="text-xl font-semibold tracking-[-0.01em] text-brand-700">
+            Invoice
+          </h2>
           <p className="mt-1 font-mono text-sm">{inv.number}</p>
           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm sm:justify-end">
             <dt className="text-ink-muted">Issue date</dt>
@@ -82,8 +90,30 @@ export function InvoiceDocument({
       <section aria-label="Bill to" className="mt-8 border-t border-border pt-5">
         <h3 className="text-xs font-medium text-ink-muted">Bill to</h3>
         <p className="mt-1 font-medium break-words">{b.name}</p>
-        <div className="mt-0.5 space-y-0.5 text-sm text-ink-muted">
-          {b.company && <p className="break-words">{b.company}</p>}
+        {/* docs/14 §5: the company whose subscription this is, under the client. */}
+        {b.company && (
+          <div
+            aria-label="Company"
+            className="mt-1.5 space-y-0.5 border-l-2 border-line-strong pl-3 text-sm"
+          >
+            <p className="font-medium break-words text-ink">{b.company.name}</p>
+            {b.company.email && (
+              <p className="break-all text-ink-muted">{b.company.email}</p>
+            )}
+            {b.company.phone && (
+              <p className="text-ink-muted">{formatPhone(b.company.phone)}</p>
+            )}
+            {b.company.address && (
+              <p className="whitespace-pre-line text-ink-muted">{b.company.address}</p>
+            )}
+          </div>
+        )}
+        <div
+          className={cn(
+            "space-y-0.5 text-sm text-ink-muted",
+            b.company ? "mt-2" : "mt-0.5"
+          )}
+        >
           {b.email && <p className="break-all">{b.email}</p>}
           {b.phone && <p>{formatPhone(b.phone)}</p>}
           {b.address && <p className="whitespace-pre-line">{b.address}</p>}
@@ -108,7 +138,9 @@ export function InvoiceDocument({
               <span className="order-3 col-span-2 text-sm text-ink-muted sm:order-none sm:col-span-1">
                 {it.periodLabel}
               </span>
-              <span className="hidden text-right tabular-nums sm:block">{it.quantity}</span>
+              <span className="hidden text-right tabular-nums sm:block">
+                {it.quantity}
+              </span>
               <span className="text-right font-mono tabular-nums">
                 {formatMoney(it.amount, inv.currency)}
               </span>
@@ -119,9 +151,15 @@ export function InvoiceDocument({
         {/* 4. Totals */}
         <dl className="mt-4 ml-auto flex w-full max-w-72 flex-col gap-1.5 text-sm">
           <TotalRow label="Subtotal">{formatAmount(inv.subtotal, inv.currency)}</TotalRow>
-          {hasDiscount && <TotalRow label="Discount">−{formatAmount(inv.discount, inv.currency)}</TotalRow>}
+          {hasDiscount && (
+            <TotalRow label="Discount">
+              −{formatAmount(inv.discount, inv.currency)}
+            </TotalRow>
+          )}
           {hasTax && (
-            <TotalRow label={`Tax (${formatAmount(inv.taxRate)}%)`}>{formatAmount(inv.taxAmount, inv.currency)}</TotalRow>
+            <TotalRow label={`Tax (${formatAmount(inv.taxRate)}%)`}>
+              {formatAmount(inv.taxAmount, inv.currency)}
+            </TotalRow>
           )}
           {/* One continuous rule above the total. */}
           <TotalRow label="Total" grand>

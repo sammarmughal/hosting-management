@@ -31,7 +31,6 @@ export default async function EditClientPage({ params }: Props) {
         currencies={currencyOptions(settings.enabledCurrencies, client.currency)}
         defaultValues={{
           name: client.name,
-          company: client.company ?? "",
           email: client.email ?? "",
           phone: client.phone ? formatPhone(client.phone) : "",
           address: client.address ?? "",

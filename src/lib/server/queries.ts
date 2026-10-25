@@ -7,7 +7,8 @@ import { createHash } from "node:crypto"
 // queries, implemented with Prisma and returning the view-model types.
 import type { Prisma, ReminderChannel } from "@/generated/prisma/client"
 import { brandInitials } from "@/lib/domain/brand"
-import { addDays, formatDatePK, todayPK } from "@/lib/domain/dates"
+import { companyOptionLabel } from "@/lib/domain/companies"
+import { addDays, daysLeft, formatDatePK, todayPK } from "@/lib/domain/dates"
 import { adminWhatsappText } from "@/lib/domain/messages"
 import {
   formatMoney,
@@ -16,31 +17,47 @@ import {
   totalsByCurrency,
   type CurrencyTotal,
 } from "@/lib/domain/money"
+import { statusColour } from "@/lib/domain/status"
 import { PAYMENT_METHOD_KEYS, paymentMethodLabel } from "@/lib/domain/validation"
 import { linkProvider } from "@/lib/domain/whatsapp"
-import type { DateRange, PaymentParams, ReminderLogParams } from "@/lib/list-filters"
-import type { ServiceFilter, ServiceSort } from "@/lib/service-filters"
+import type {
+  ClientListParams,
+  CompanyListParams,
+  DateRange,
+  PaymentParams,
+  ReminderLogParams,
+} from "@/lib/list-filters"
+import type { SubscriptionFilter, SubscriptionSort } from "@/lib/subscription-filters"
 import { prisma } from "@/lib/server/db"
 import { fromDbDate, toDbDate } from "@/lib/server/db-dates"
-import { getAppSettings, getPreferences as loadPreferences, getTemplate } from "@/lib/server/settings"
+import {
+  getAppSettings,
+  getPreferences as loadPreferences,
+  getTemplate,
+} from "@/lib/server/settings"
 import { currentSession } from "@/lib/server/session"
 import {
-  serviceInclude,
+  subscriptionInclude,
   toReminderRow,
-  toServiceRow,
+  toSubscriptionRow,
   viewContext,
   type ViewContext,
 } from "@/lib/server/view"
 import type {
   ActivityItem,
   ClientDetail,
+  ClientListRow,
+  CompanyRow,
   DashboardStats,
+  NextRenewal,
   NotificationItem,
+  Option,
   PaymentRow,
   QueueItem,
   ReminderRow,
-  ServiceRow,
+  ServiceTypeRow,
   ShellSummary,
+  SubscriptionRow,
 } from "@/types/view"
 
 const OPEN: ReminderRow["status"][] = ["pending", "failed", "opened"]
@@ -102,7 +119,7 @@ export async function getShellSummary(): Promise<ShellSummary> {
         : null,
     },
     remindersDue: queue.length,
-    remindersOverdue: queue.some((q) => q.service.daysLeft < 0),
+    remindersOverdue: queue.some((q) => q.subscription.daysLeft < 0),
     unreadNotifications: unread,
   }
 }
@@ -110,7 +127,7 @@ export async function getShellSummary(): Promise<ShellSummary> {
 /* Reminder queue ---------------------------------------------------- */
 
 export interface ReminderQueueData {
-  /** Services with at least one client reminder still needing action. */
+  /** Subscriptions with at least one client reminder still needing action. */
   queue: QueueItem[]
   adminEmail: string
   /** wa.me link to the admin's own number with the summary text (docs/08 §5.2). */
@@ -118,43 +135,57 @@ export interface ReminderQueueData {
 }
 
 /**
- * One item per service with an open client row: its email and WhatsApp rows
- * for that stage (including a sibling that's already sent). Most urgent first.
+ * One item per subscription with an open client row: its email and WhatsApp
+ * rows for that stage (including a sibling that's already sent). Most urgent
+ * first. `companyId` narrows it to one company (docs/14 §7).
  */
-async function loadQueue(ctx: ViewContext): Promise<QueueItem[]> {
+async function loadQueue(ctx: ViewContext, companyId = 0): Promise<QueueItem[]> {
   const open = await prisma.reminder.findMany({
-    where: { recipient: "client", status: { in: OPEN } },
-    select: { serviceId: true, cycleDate: true, stage: true },
+    where: {
+      recipient: "client",
+      status: { in: OPEN },
+      ...(companyId ? { subscription: { companyId } } : {}),
+    },
+    select: { subscriptionId: true, cycleDate: true, stage: true },
   })
   if (open.length === 0) return []
   const keys = new Map(
-    open.map((r) => [`${r.serviceId}:${fromDbDate(r.cycleDate)}:${r.stage}`, r])
+    open.map((r) => [`${r.subscriptionId}:${fromDbDate(r.cycleDate)}:${r.stage}`, r])
   )
   const rows = await prisma.reminder.findMany({
     where: {
       recipient: "client",
       OR: [...keys.values()].map((k) => ({
-        serviceId: k.serviceId,
+        subscriptionId: k.subscriptionId,
         cycleDate: k.cycleDate,
         stage: k.stage,
       })),
     },
-    include: { service: { include: serviceInclude } },
+    include: { subscription: { include: subscriptionInclude } },
     orderBy: { id: "asc" },
   })
   const items = new Map<string, QueueItem>()
   for (const r of rows) {
-    const key = `${r.serviceId}:${fromDbDate(r.cycleDate)}:${r.stage}`
+    const key = `${r.subscriptionId}:${fromDbDate(r.cycleDate)}:${r.stage}`
     let item = items.get(key)
     if (!item) {
-      item = { service: toServiceRow(r.service, ctx), stage: r.stage, email: null, whatsapp: null }
+      item = {
+        subscription: toSubscriptionRow(r.subscription, ctx),
+        stage: r.stage,
+        email: null,
+        whatsapp: null,
+      }
       items.set(key, item)
     }
-    item[r.channel] = toReminderRow(r, item.service)
+    item[r.channel] = toReminderRow(r, item.subscription)
   }
   return [...items.values()]
     .filter((q) => [q.email, q.whatsapp].some((r) => r && OPEN.includes(r.status)))
-    .sort((a, b) => a.service.daysLeft - b.service.daysLeft || a.service.id - b.service.id)
+    .sort(
+      (a, b) =>
+        a.subscription.daysLeft - b.subscription.daysLeft ||
+        a.subscription.id - b.subscription.id
+    )
 }
 
 async function adminSummaryLink(queue: QueueItem[], ctx: ViewContext) {
@@ -162,16 +193,16 @@ async function adminSummaryLink(queue: QueueItem[], ctx: ViewContext) {
   if (!queue.length || !s.adminWhatsapp) return null
   const text = adminWhatsappText(
     await getTemplate("admin_whatsapp"),
-    queue.map((q) => q.service),
+    queue.map((q) => q.subscription),
     ctx.business,
     ctx.today
   )
   return linkProvider.prepare({ to: s.adminWhatsapp, text })?.url ?? null
 }
 
-export async function getReminderQueue(): Promise<ReminderQueueData> {
+export async function getReminderQueue(companyId = 0): Promise<ReminderQueueData> {
   const ctx = await viewContext()
-  const [queue, s] = await Promise.all([loadQueue(ctx), getAppSettings()])
+  const [queue, s] = await Promise.all([loadQueue(ctx, companyId), getAppSettings()])
   return {
     queue,
     adminEmail: s.adminEmail,
@@ -183,44 +214,44 @@ export async function getReminderQueue(): Promise<ReminderQueueData> {
 
 export interface DashboardData extends ReminderQueueData {
   stats: DashboardStats
-  /** Active services with ≤ 30 days left or expired, most urgent first (max 10). */
-  dueSoon: ServiceRow[]
+  /** Active subscriptions with ≤ 30 days left or expired, most urgent first (max 10). */
+  dueSoon: SubscriptionRow[]
   lastCheckAt: string
 }
 
-export async function getDashboard(): Promise<DashboardData> {
+export async function getDashboard(companyId = 0): Promise<DashboardData> {
   const ctx = await viewContext()
   const s = await getAppSettings()
   const t = ctx.thresholds
   const in30 = { gte: toDbDate(ctx.today), lte: toDbDate(addDays(ctx.today, 30)) }
   const active = { status: "active" } as const
   const [count, expiring, urgent, expired, expected, dueSoon, queue] = await Promise.all([
-    prisma.service.count({ where: active }),
-    prisma.service.count({
+    prisma.subscription.count({ where: active }),
+    prisma.subscription.count({
       where: {
         ...active,
         renewalDate: { gte: in30.gte, lte: toDbDate(addDays(ctx.today, t.orange)) },
       },
     }),
-    prisma.service.count({
+    prisma.subscription.count({
       where: {
         ...active,
         renewalDate: { gte: in30.gte, lte: toDbDate(addDays(ctx.today, t.red)) },
       },
     }),
-    prisma.service.count({ where: { ...active, renewalDate: { lt: in30.gte } } }),
-    prisma.service.groupBy({
+    prisma.subscription.count({ where: { ...active, renewalDate: { lt: in30.gte } } }),
+    prisma.subscription.groupBy({
       by: ["currency"],
       where: { ...active, renewalDate: in30 },
       _sum: { chargeAmount: true },
     }),
-    prisma.service.findMany({
+    prisma.subscription.findMany({
       where: { ...active, renewalDate: { lte: in30.lte } },
-      include: serviceInclude,
+      include: subscriptionInclude,
       orderBy: [{ renewalDate: "asc" }, { id: "asc" }],
       take: 10,
     }),
-    loadQueue(ctx),
+    loadQueue(ctx, companyId),
   ])
   return {
     queue,
@@ -239,14 +270,17 @@ export async function getDashboard(): Promise<DashboardData> {
         s.defaultCurrency
       ),
     },
-    dueSoon: dueSoon.map((x) => toServiceRow(x, ctx)),
+    dueSoon: dueSoon.map((x) => toSubscriptionRow(x, ctx)),
     lastCheckAt: s.lastCheckAt ?? new Date(0).toISOString(),
   }
 }
 
-/* Clients / services ------------------------------------------------ */
+/* Subscriptions (docs/14 §4) ---------------------------------------- */
 
-const FILTERS: Record<Exclude<ServiceFilter, "all">, (s: ServiceRow) => boolean> = {
+const FILTERS: Record<
+  Exclude<SubscriptionFilter, "all">,
+  (s: SubscriptionRow) => boolean
+> = {
   active: (s) => s.status === "active",
   due: (s) => s.status === "active" && s.daysLeft <= 30,
   soon: (s) => s.status === "active" && s.daysLeft >= 0 && s.daysLeft <= 30,
@@ -257,30 +291,37 @@ const FILTERS: Record<Exclude<ServiceFilter, "all">, (s: ServiceRow) => boolean>
   cancelled: (s) => s.colour === "cancelled",
 }
 
-export interface ServiceFilters {
+export interface SubscriptionFilters {
   q?: string
-  filter?: ServiceFilter
+  filter?: SubscriptionFilter
   /** 'YYYY-MM' */
   month?: string
-  sort?: ServiceSort
+  /** Company id, 0 = any. */
+  company?: number
+  /** Service type id, 0 = any. */
+  service?: number
+  sort?: SubscriptionSort
   page?: number
 }
 
 export const PAGE_SIZE = 25
 
-export interface ServiceList {
-  rows: ServiceRow[]
+export interface SubscriptionList {
+  rows: SubscriptionRow[]
   /** Rows matching the search and filter (before paging). */
   total: number
-  /** Every service, ignoring search and filters (0 = no clients yet). */
+  /** Every subscription, ignoring search and filters (0 = none yet). */
   totalAll: number
   page: number
   pageSize: number
-  counts: Record<ServiceFilter, number>
+  counts: Record<SubscriptionFilter, number>
 }
 
-/** Search across client and service fields (docs/03 §5). Phone matches digits. */
-function serviceSearch(q: string): Prisma.ServiceWhereInput {
+/**
+ * Search across client, company, service type and subscription fields
+ * (docs/03 §5, docs/14 §8). Phone matches digits.
+ */
+function subscriptionSearch(q: string): Prisma.SubscriptionWhereInput {
   const needle = q.trim()
   if (!needle) return {}
   const digits = needle.replace(/\D/g, "").replace(/^0/, "")
@@ -290,14 +331,15 @@ function serviceSearch(q: string): Prisma.ServiceWhereInput {
     OR: [
       { domain: ci },
       { client: { name: ci } },
-      { client: { company: ci } },
+      { company: { name: ci } },
+      { serviceType: { name: ci } },
       { client: { email: ci } },
       ...(digits.length >= 3 ? [{ client: { phone: { contains: digits } } }] : []),
     ],
   }
 }
 
-function monthRange(month?: string): Prisma.ServiceWhereInput {
+function monthRange(month?: string): Prisma.SubscriptionWhereInput {
   if (!month) return {}
   const start = `${month}-01`
   const [y = 0, m = 1] = month.split("-").map(Number)
@@ -305,7 +347,10 @@ function monthRange(month?: string): Prisma.ServiceWhereInput {
   return { renewalDate: { gte: toDbDate(start), lt: toDbDate(next) } }
 }
 
-const SORTS: Record<ServiceSort, (a: ServiceRow, b: ServiceRow) => number> = {
+const SORTS: Record<
+  SubscriptionSort,
+  (a: SubscriptionRow, b: SubscriptionRow) => number
+> = {
   days_asc: (a, b) => cancelledLast(a, b) || a.daysLeft - b.daysLeft || a.id - b.id,
   days_desc: (a, b) => cancelledLast(a, b) || b.daysLeft - a.daysLeft || a.id - b.id,
   name: (a, b) => a.clientName.localeCompare(b.clientName) || a.id - b.id,
@@ -314,26 +359,43 @@ const SORTS: Record<ServiceSort, (a: ServiceRow, b: ServiceRow) => number> = {
     Math.sign(Number(toUnits(b.chargeAmount) - toUnits(a.chargeAmount))) || a.id - b.id,
 }
 
-function cancelledLast(a: ServiceRow, b: ServiceRow) {
+function cancelledLast(a: SubscriptionRow, b: SubscriptionRow) {
   return Number(a.status === "cancelled") - Number(b.status === "cancelled")
 }
 
-export async function listServices(filters: ServiceFilters = {}): Promise<ServiceList> {
-  const { q = "", filter = "all", month, sort = "days_asc", page = 1 } = filters
+export async function listSubscriptions(
+  filters: SubscriptionFilters = {}
+): Promise<SubscriptionList> {
+  const {
+    q = "",
+    filter = "all",
+    month,
+    company = 0,
+    service = 0,
+    sort = "days_asc",
+    page = 1,
+  } = filters
   const ctx = await viewContext()
   const [found, totalAll] = await Promise.all([
-    prisma.service.findMany({
-      where: { AND: [serviceSearch(q), monthRange(month)] },
-      include: serviceInclude,
+    prisma.subscription.findMany({
+      where: {
+        AND: [
+          subscriptionSearch(q),
+          monthRange(month),
+          company ? { companyId: company } : {},
+          service ? { serviceTypeId: service } : {},
+        ],
+      },
+      include: subscriptionInclude,
     }),
-    prisma.service.count(),
+    prisma.subscription.count(),
   ])
   // Colours depend on today and the thresholds, so the chip counts, filter
-  // and sort run here; the search and month filter ran in the database.
-  const searched = found.map((s) => toServiceRow(s, ctx))
-  const counts = { all: searched.length } as Record<ServiceFilter, number>
+  // and sort run here; the search and the other filters ran in the database.
+  const searched = found.map((s) => toSubscriptionRow(s, ctx))
+  const counts = { all: searched.length } as Record<SubscriptionFilter, number>
   for (const [key, test] of Object.entries(FILTERS))
-    counts[key as ServiceFilter] = searched.filter(test).length
+    counts[key as SubscriptionFilter] = searched.filter(test).length
 
   const filtered = filter === "all" ? searched : searched.filter(FILTERS[filter])
   const sorted = filtered.sort(SORTS[sort])
@@ -349,171 +411,16 @@ export async function listServices(filters: ServiceFilters = {}): Promise<Servic
   }
 }
 
-export interface ClientPageData {
-  client: ClientDetail
-  payments: PaymentRow[]
-  reminders: ReminderRow[]
-  activity: ActivityItem[]
-}
-
-const paymentInclude = { service: { include: { client: true } } } as const
-
-type PaymentRecord = Prisma.PaymentGetPayload<{ include: typeof paymentInclude }>
-
-function toPaymentRow(p: PaymentRecord): PaymentRow {
-  return {
-    id: p.id,
-    serviceId: p.serviceId,
-    domain: p.service.domain,
-    clientName: p.service.client.name,
-    amount: p.amount.toFixed(MONEY_SCALE),
-    currency: p.currency,
-    paidOn: fromDbDate(p.paidOn),
-    method: paymentMethodLabel(p.method),
-    reference: p.reference,
-    periodFrom: fromDbDate(p.periodFrom),
-    periodTo: fromDbDate(p.periodTo),
-  }
-}
-
-export async function getClient(id: number): Promise<ClientPageData | null> {
-  if (!Number.isInteger(id) || id <= 0) return null
-  const ctx = await viewContext()
-  const client = await prisma.client.findUnique({
-    where: { id },
-    include: {
-      services: { orderBy: { id: "asc" }, include: { invoices: serviceInclude.invoices } },
-    },
-  })
-  if (!client) return null
-  const services = client.services.map((s) => toServiceRow({ ...s, client }, ctx))
-  const ids = services.map((s) => s.id)
-  const byId = new Map(services.map((s) => [s.id, s]))
-  const [payments, reminders] = await Promise.all([
-    prisma.payment.findMany({
-      where: { serviceId: { in: ids } },
-      include: paymentInclude,
-      orderBy: [{ paidOn: "desc" }, { id: "desc" }],
-    }),
-    prisma.reminder.findMany({
-      where: { serviceId: { in: ids }, recipient: "client" },
-      orderBy: [{ sentAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
-    }),
-  ])
-  const detail: ClientDetail = {
-    id: client.id,
-    name: client.name,
-    company: client.company,
-    email: client.email,
-    phone: client.phone,
-    address: client.address,
-    currency: client.currency,
-    notes: client.notes,
-    services,
-  }
-  const paymentRows = payments.map(toPaymentRow)
-  const reminderRows = reminders.flatMap((r) => {
-    const s = byId.get(r.serviceId)
-    return s ? [toReminderRow(r, s)] : []
-  })
-  return {
-    client: detail,
-    payments: paymentRows,
-    reminders: reminderRows,
-    activity: buildActivity(detail, paymentRows, reminderRows),
-  }
-}
-
-// The timeline is derived from services, payments and reminders, as in the
-// approved UI. Dates without a time sit at 09:00 PK.
-function buildActivity(
-  client: ClientDetail,
-  payments: PaymentRow[],
-  reminders: ReminderRow[]
-): ActivityItem[] {
-  const atDate = (d: string) => `${d}T09:00:00+05:00`
-  const items: ActivityItem[] = [
-    ...client.services.map((s) => ({
-      id: `svc-${s.id}`,
-      at: atDate(s.startDate),
-      kind: "service" as const,
-      text: `Hosting for ${s.domain} started${s.planLabel ? ` on the ${s.planLabel} plan` : ""}`,
-    })),
-    ...payments.map((p) => ({
-      id: `pay-${p.id}`,
-      at: atDate(p.paidOn),
-      kind: "payment" as const,
-      text: `Payment of ${formatMoney(p.amount, p.currency)} by ${p.method} · ${p.domain} renewed until ${formatDatePK(p.periodTo)}`,
-    })),
-    ...reminders.flatMap((r): ActivityItem[] => {
-      if (!r.sentAt) return []
-      const channel = r.channel === "email" ? "Email" : "WhatsApp"
-      const map: Partial<Record<ReminderRow["status"], [ActivityItem["kind"], string]>> = {
-        sent: [r.channel, `${channel} reminder sent for ${r.service.domain}`],
-        opened: ["whatsapp", `WhatsApp reminder opened for ${r.service.domain}`],
-        failed: ["failed", `${channel} reminder for ${r.service.domain} failed`],
-        skipped: ["skipped", `${channel} reminder for ${r.service.domain} skipped`],
-      }
-      const entry = map[r.status]
-      return entry ? [{ id: `rem-${r.id}`, at: r.sentAt, kind: entry[0], text: entry[1] }] : []
-    }),
-  ]
-  return items.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
-}
-
-export interface ClientExportRow {
-  name: string
-  company: string | null
-  email: string | null
-  /** Normalised digits. */
-  phone: string | null
-  address: string | null
-  currency: string
-  services: number
-  notes: string | null
-  /** YYYY-MM-DD (PK). */
-  createdOn: string
-}
-
-/** Every client, by name (CSV export / weekly backup). */
-export async function exportClients(): Promise<ClientExportRow[]> {
-  const rows = await prisma.client.findMany({
-    include: { _count: { select: { services: true } } },
-    orderBy: [{ name: "asc" }, { id: "asc" }],
-  })
-  return rows.map((c) => ({
-    name: c.name,
-    company: c.company,
-    email: c.email,
-    phone: c.phone,
-    address: c.address,
-    currency: c.currency,
-    services: c._count.services,
-    notes: c.notes,
-    createdOn: todayPK(c.createdAt),
-  }))
-}
-
-/** Every service, by renewal date (CSV export). */
-export async function exportServices(): Promise<ServiceRow[]> {
-  const ctx = await viewContext()
-  const rows = await prisma.service.findMany({
-    include: serviceInclude,
-    orderBy: [{ renewalDate: "asc" }, { id: "asc" }],
-  })
-  return rows.map((s) => toServiceRow(s, ctx))
-}
-
-export async function getService(id: number): Promise<ServiceRow | null> {
+export async function getSubscription(id: number): Promise<SubscriptionRow | null> {
   if (!Number.isInteger(id) || id <= 0) return null
   const [s, ctx] = await Promise.all([
-    prisma.service.findUnique({ where: { id }, include: serviceInclude }),
+    prisma.subscription.findUnique({ where: { id }, include: subscriptionInclude }),
     viewContext(),
   ])
-  return s ? toServiceRow(s, ctx) : null
+  return s ? toSubscriptionRow(s, ctx) : null
 }
 
-/* Reminders, payments, notifications -------------------------------- */
+/* Shared helpers ------------------------------------------------------ */
 
 export interface Page<T> {
   rows: T[]
@@ -529,6 +436,430 @@ function pageOf(total: number, page: number) {
   const p = Math.min(Math.max(1, page), pages)
   return { page: p, skip: (p - 1) * PAGE_SIZE }
 }
+
+/** The soonest renewal among active subscriptions, as a timer pill. */
+function nextRenewal(
+  subs: readonly { status: string; renewalDate: Date }[],
+  ctx: ViewContext
+): NextRenewal | null {
+  const dates = subs
+    .filter((s) => s.status === "active")
+    .map((s) => fromDbDate(s.renewalDate))
+    .sort()
+  const first = dates[0]
+  if (!first) return null
+  const left = daysLeft(first, ctx.today)
+  return {
+    renewalDate: first,
+    daysLeft: left,
+    colour: statusColour(left, ctx.thresholds),
+  }
+}
+
+/* Clients (docs/14 §7) ---------------------------------------------- */
+
+function clientSearch(q: string): Prisma.ClientWhereInput {
+  const needle = q.trim()
+  if (!needle) return {}
+  const digits = needle.replace(/\D/g, "").replace(/^0/, "")
+  const ci = { contains: needle } as const
+  return {
+    OR: [
+      { name: ci },
+      { email: ci },
+      { companies: { some: { name: ci } } },
+      { subscriptions: { some: { domain: ci } } },
+      ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : []),
+    ],
+  }
+}
+
+/** /clients: one row per client, by name. */
+export async function listClients(
+  params: ClientListParams
+): Promise<Page<ClientListRow>> {
+  const where = clientSearch(params.q)
+  const [total, totalAll, ctx] = await Promise.all([
+    prisma.client.count({ where }),
+    prisma.client.count(),
+    viewContext(),
+  ])
+  const { page, skip } = pageOf(total, params.page)
+  const rows = await prisma.client.findMany({
+    where,
+    include: {
+      _count: { select: { companies: true } },
+      subscriptions: { select: { status: true, renewalDate: true } },
+    },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    skip,
+    take: PAGE_SIZE,
+  })
+  return {
+    rows: rows.map((c) => ({
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      phone: c.phone,
+      currency: c.currency,
+      companies: c._count.companies,
+      activeSubscriptions: c.subscriptions.filter((s) => s.status === "active").length,
+      next: nextRenewal(c.subscriptions, ctx),
+    })),
+    total,
+    page,
+    pageSize: PAGE_SIZE,
+    totalAll,
+  }
+}
+
+export interface ClientPageData {
+  client: ClientDetail
+  payments: PaymentRow[]
+  reminders: ReminderRow[]
+  activity: ActivityItem[]
+}
+
+const paymentInclude = {
+  subscription: {
+    include: {
+      client: true,
+      company: { select: { name: true } },
+      serviceType: { select: { name: true } },
+    },
+  },
+} as const
+
+type PaymentRecord = Prisma.PaymentGetPayload<{ include: typeof paymentInclude }>
+
+function toPaymentRow(p: PaymentRecord): PaymentRow {
+  return {
+    id: p.id,
+    subscriptionId: p.subscriptionId,
+    domain: p.subscription.domain,
+    serviceName: p.subscription.serviceType.name,
+    clientName: p.subscription.client.name,
+    company: p.subscription.company?.name ?? null,
+    amount: p.amount.toFixed(MONEY_SCALE),
+    currency: p.currency,
+    paidOn: fromDbDate(p.paidOn),
+    method: paymentMethodLabel(p.method),
+    reference: p.reference,
+    periodFrom: fromDbDate(p.periodFrom),
+    periodTo: fromDbDate(p.periodTo),
+  }
+}
+
+const companyInclude = {
+  client: { select: { name: true } },
+  subscriptions: {
+    select: {
+      status: true,
+      renewalDate: true,
+      _count: { select: { invoices: true, payments: true } },
+    },
+  },
+} satisfies Prisma.CompanyInclude
+
+type CompanyRecord = Prisma.CompanyGetPayload<{ include: typeof companyInclude }>
+
+function toCompanyRow(c: CompanyRecord, ctx: ViewContext): CompanyRow {
+  return {
+    id: c.id,
+    clientId: c.clientId,
+    clientName: c.client.name,
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    address: c.address,
+    subscriptions: c.subscriptions.length,
+    invoices: c.subscriptions.reduce((n, s) => n + s._count.invoices, 0),
+    payments: c.subscriptions.reduce((n, s) => n + s._count.payments, 0),
+    next: nextRenewal(c.subscriptions, ctx),
+  }
+}
+
+export async function getClient(id: number): Promise<ClientPageData | null> {
+  if (!Number.isInteger(id) || id <= 0) return null
+  const ctx = await viewContext()
+  const client = await prisma.client.findUnique({
+    where: { id },
+    include: {
+      companies: { orderBy: [{ name: "asc" }, { id: "asc" }], include: companyInclude },
+      subscriptions: {
+        orderBy: { id: "asc" },
+        include: {
+          company: subscriptionInclude.company,
+          serviceType: subscriptionInclude.serviceType,
+          invoices: subscriptionInclude.invoices,
+        },
+      },
+    },
+  })
+  if (!client) return null
+  const subscriptions = client.subscriptions.map((s) =>
+    toSubscriptionRow({ ...s, client }, ctx)
+  )
+  const ids = subscriptions.map((s) => s.id)
+  const byId = new Map(subscriptions.map((s) => [s.id, s]))
+  const [payments, reminders] = await Promise.all([
+    prisma.payment.findMany({
+      where: { subscriptionId: { in: ids } },
+      include: paymentInclude,
+      orderBy: [{ paidOn: "desc" }, { id: "desc" }],
+    }),
+    prisma.reminder.findMany({
+      where: { subscriptionId: { in: ids }, recipient: "client" },
+      orderBy: [{ sentAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+    }),
+  ])
+  const detail: ClientDetail = {
+    id: client.id,
+    name: client.name,
+    email: client.email,
+    phone: client.phone,
+    address: client.address,
+    currency: client.currency,
+    notes: client.notes,
+    companies: client.companies.map((c) => toCompanyRow(c, ctx)),
+    subscriptions,
+  }
+  const paymentRows = payments.map(toPaymentRow)
+  const reminderRows = reminders.flatMap((r) => {
+    const s = byId.get(r.subscriptionId)
+    return s ? [toReminderRow(r, s)] : []
+  })
+  return {
+    client: detail,
+    payments: paymentRows,
+    reminders: reminderRows,
+    activity: buildActivity(detail, paymentRows, reminderRows),
+  }
+}
+
+// The timeline is derived from subscriptions, payments and reminders, as in
+// the approved UI. Dates without a time sit at 09:00 PK.
+function buildActivity(
+  client: ClientDetail,
+  payments: PaymentRow[],
+  reminders: ReminderRow[]
+): ActivityItem[] {
+  const atDate = (d: string) => `${d}T09:00:00+05:00`
+  const items: ActivityItem[] = [
+    ...client.subscriptions.map((s) => ({
+      id: `sub-${s.id}`,
+      at: atDate(s.startDate),
+      kind: "subscription" as const,
+      text: `${s.serviceName} for ${s.domain} started${s.planLabel ? ` on the ${s.planLabel} plan` : ""}`,
+    })),
+    ...payments.map((p) => ({
+      id: `pay-${p.id}`,
+      at: atDate(p.paidOn),
+      kind: "payment" as const,
+      text: `Payment of ${formatMoney(p.amount, p.currency)} by ${p.method} · ${p.domain} renewed until ${formatDatePK(p.periodTo)}`,
+    })),
+    ...reminders.flatMap((r): ActivityItem[] => {
+      if (!r.sentAt) return []
+      const channel = r.channel === "email" ? "Email" : "WhatsApp"
+      const map: Partial<Record<ReminderRow["status"], [ActivityItem["kind"], string]>> =
+        {
+          sent: [r.channel, `${channel} reminder sent for ${r.subscription.domain}`],
+          opened: ["whatsapp", `WhatsApp reminder opened for ${r.subscription.domain}`],
+          failed: ["failed", `${channel} reminder for ${r.subscription.domain} failed`],
+          skipped: [
+            "skipped",
+            `${channel} reminder for ${r.subscription.domain} skipped`,
+          ],
+        }
+      const entry = map[r.status]
+      return entry
+        ? [{ id: `rem-${r.id}`, at: r.sentAt, kind: entry[0], text: entry[1] }]
+        : []
+    }),
+  ]
+  return items.sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+}
+
+/* Companies (docs/14 §3) -------------------------------------------- */
+
+export async function listCompanies(
+  params: CompanyListParams
+): Promise<Page<CompanyRow>> {
+  const ci = params.q ? ({ contains: params.q } as const) : null
+  const where: Prisma.CompanyWhereInput = {
+    ...(params.client ? { clientId: params.client } : {}),
+    ...(ci ? { OR: [{ name: ci }, { email: ci }, { client: { name: ci } }] } : {}),
+  }
+  const [total, totalAll, ctx] = await Promise.all([
+    prisma.company.count({ where }),
+    prisma.company.count(),
+    viewContext(),
+  ])
+  const { page, skip } = pageOf(total, params.page)
+  const rows = await prisma.company.findMany({
+    where,
+    include: companyInclude,
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+    skip,
+    take: PAGE_SIZE,
+  })
+  return {
+    rows: rows.map((c) => toCompanyRow(c, ctx)),
+    total,
+    page,
+    pageSize: PAGE_SIZE,
+    totalAll,
+  }
+}
+
+export async function getCompany(id: number): Promise<CompanyRow | null> {
+  if (!Number.isInteger(id) || id <= 0) return null
+  const [c, ctx] = await Promise.all([
+    prisma.company.findUnique({ where: { id }, include: companyInclude }),
+    viewContext(),
+  ])
+  return c ? toCompanyRow(c, ctx) : null
+}
+
+/* Pickers and filters ------------------------------------------------- */
+
+/** Every client, for the company and subscription forms. */
+export async function clientOptions(): Promise<(Option & { currency: string })[]> {
+  const rows = await prisma.client.findMany({
+    select: { id: true, name: true, currency: true },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  })
+  return rows.map((c) => ({ id: c.id, label: c.name, currency: c.currency }))
+}
+
+/** Every company with its client: "Company — Client" (docs/14 §8). */
+export async function companyOptions(): Promise<
+  (Option & { clientId: number; name: string })[]
+> {
+  const rows = await prisma.company.findMany({
+    select: { id: true, name: true, clientId: true, client: { select: { name: true } } },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  })
+  return rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    clientId: c.clientId,
+    label: companyOptionLabel(c.name, c.client.name),
+  }))
+}
+
+/** The Service Catalog with usage, in list order (docs/14 §2). */
+export async function listServiceTypes(): Promise<ServiceTypeRow[]> {
+  const rows = await prisma.serviceType.findMany({
+    include: { _count: { select: { subscriptions: true } } },
+    orderBy: [{ position: "asc" }, { name: "asc" }],
+  })
+  return rows.map((t) => ({
+    id: t.id,
+    name: t.name,
+    defaultPrice: t.defaultPrice ? t.defaultPrice.toFixed(MONEY_SCALE) : null,
+    isActive: t.isActive,
+    position: t.position,
+    usedBy: t._count.subscriptions,
+  }))
+}
+
+/**
+ * Everything the subscription form picks from (docs/14 §4): clients,
+ * companies, active service types (plus `keepTypeId`, an edited
+ * subscription's own type) and the enabled currencies.
+ */
+export async function getSubscriptionFormOptions(keepTypeId?: number) {
+  const [clients, companies, types, s] = await Promise.all([
+    clientOptions(),
+    companyOptions(),
+    listServiceTypes(),
+    getAppSettings(),
+  ])
+  return {
+    clients,
+    companies,
+    serviceTypes: types
+      .filter((t) => t.isActive || t.id === keepTypeId)
+      .map((t) => ({ id: t.id, name: t.name, defaultPrice: t.defaultPrice })),
+    enabledCurrencies: s.enabledCurrencies,
+    defaultCurrency: s.defaultCurrency,
+  }
+}
+
+/* Exports (docs/14 §9) ------------------------------------------------ */
+
+export interface ClientExportRow {
+  name: string
+  email: string | null
+  /** Normalised digits. */
+  phone: string | null
+  address: string | null
+  currency: string
+  notes: string | null
+  companies: number
+  subscriptions: number
+  /** YYYY-MM-DD (PK). */
+  createdOn: string
+}
+
+/** Every client, by name (CSV export / weekly backup). */
+export async function exportClients(): Promise<ClientExportRow[]> {
+  const rows = await prisma.client.findMany({
+    include: { _count: { select: { companies: true, subscriptions: true } } },
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  })
+  return rows.map((c) => ({
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    address: c.address,
+    currency: c.currency,
+    notes: c.notes,
+    companies: c._count.companies,
+    subscriptions: c._count.subscriptions,
+    createdOn: todayPK(c.createdAt),
+  }))
+}
+
+export interface CompanyExportRow {
+  clientName: string
+  clientEmail: string | null
+  clientPhone: string | null
+  name: string
+  email: string | null
+  phone: string | null
+  address: string | null
+}
+
+/** Every company, by client then name (CSV export). */
+export async function exportCompanies(): Promise<CompanyExportRow[]> {
+  const rows = await prisma.company.findMany({
+    include: { client: { select: { name: true, email: true, phone: true } } },
+    orderBy: [{ client: { name: "asc" } }, { name: "asc" }, { id: "asc" }],
+  })
+  return rows.map((c) => ({
+    clientName: c.client.name,
+    clientEmail: c.client.email,
+    clientPhone: c.client.phone,
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    address: c.address,
+  }))
+}
+
+/** Every subscription, by renewal date (CSV export). */
+export async function exportSubscriptions(): Promise<SubscriptionRow[]> {
+  const ctx = await viewContext()
+  const rows = await prisma.subscription.findMany({
+    include: subscriptionInclude,
+    orderBy: [{ renewalDate: "asc" }, { id: "asc" }],
+  })
+  return rows.map((s) => toSubscriptionRow(s, ctx))
+}
+
+/* Reminders, payments, notifications -------------------------------- */
 
 /** A PK calendar-date range as UTC instants (for DATETIME(3) UTC columns). */
 function instantRange(r: DateRange): Prisma.DateTimeNullableFilter | undefined {
@@ -550,13 +881,12 @@ export async function listReminderLog(
     ...(filters.channel ? { channel: filters.channel as ReminderChannel } : {}),
     ...(filters.status ? { status: filters.status } : {}),
     ...(sent ? { sentAt: sent } : {}),
-    ...(ci
-      ? {
-          service: {
-            OR: [{ domain: ci }, { client: { name: ci } }, { client: { company: ci } }],
-          },
-        }
-      : {}),
+    subscription: {
+      ...(filters.company ? { companyId: filters.company } : {}),
+      ...(ci
+        ? { OR: [{ domain: ci }, { client: { name: ci } }, { company: { name: ci } }] }
+        : {}),
+    },
   }
   const [total, totalAll, ctx] = await Promise.all([
     prisma.reminder.count({ where }),
@@ -566,13 +896,13 @@ export async function listReminderLog(
   const { page, skip } = pageOf(total, filters.page)
   const rows = await prisma.reminder.findMany({
     where,
-    include: { service: { include: serviceInclude } },
+    include: { subscription: { include: subscriptionInclude } },
     orderBy: [{ sentAt: { sort: "desc", nulls: "first" } }, { id: "desc" }],
     skip,
     take: PAGE_SIZE,
   })
   return {
-    rows: rows.map((r) => toReminderRow(r, toServiceRow(r.service, ctx))),
+    rows: rows.map((r) => toReminderRow(r, toSubscriptionRow(r.subscription, ctx))),
     total,
     page,
     pageSize: PAGE_SIZE,
@@ -606,8 +936,9 @@ function paymentWhere(range: DateRange & { q?: string }): Prisma.PaymentWhereInp
       ? {
           OR: [
             { reference: ci },
-            { service: { domain: ci } },
-            { service: { client: { name: ci } } },
+            { subscription: { domain: ci } },
+            { subscription: { client: { name: ci } } },
+            { subscription: { company: { name: ci } } },
             ...(methods.length ? [{ method: { in: methods } }] : []),
           ],
         }
@@ -639,7 +970,10 @@ export async function listPayments(filters: PaymentParams): Promise<PaymentList>
     pageSize: PAGE_SIZE,
     totalAll,
     totals: totalsByCurrency(
-      sums.map((x) => ({ currency: x.currency, amount: (x._sum.amount ?? 0).toFixed(MONEY_SCALE) })),
+      sums.map((x) => ({
+        currency: x.currency,
+        amount: (x._sum.amount ?? 0).toFixed(MONEY_SCALE),
+      })),
       s.defaultCurrency
     ),
   }
@@ -659,6 +993,15 @@ export async function exportPayments(
 
 export const NOTIFICATIONS_PAGE_SIZE = 25
 
+/** A notification opens its subscription on the client page. */
+const notificationHref = (n: {
+  subscriptionId: number | null
+  subscription: { clientId: number } | null
+}) =>
+  n.subscription
+    ? `/clients/${n.subscription.clientId}?tab=subscriptions#sub-${n.subscriptionId}`
+    : undefined
+
 /** The Notifications page (docs/07 §1: paginated list), newest first. */
 export async function listNotificationsPage(page: number): Promise<{
   unread: number
@@ -676,7 +1019,7 @@ export async function listNotificationsPage(page: number): Promise<{
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     skip,
     take: NOTIFICATIONS_PAGE_SIZE,
-    include: { service: { select: { clientId: true } } },
+    include: { subscription: { select: { clientId: true } } },
   })
   return {
     unread,
@@ -689,7 +1032,7 @@ export async function listNotificationsPage(page: number): Promise<{
       title: n.title,
       createdAt: n.createdAt.toISOString(),
       isRead: n.isRead,
-      href: n.service ? `/clients/${n.service.clientId}#svc-${n.serviceId}` : undefined,
+      href: notificationHref(n),
     })),
   }
 }
@@ -704,7 +1047,7 @@ export async function listNotifications(limit = 10): Promise<{
     prisma.notification.findMany({
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit,
-      include: { service: { select: { clientId: true } } },
+      include: { subscription: { select: { clientId: true } } },
     }),
   ])
   return {
@@ -715,7 +1058,7 @@ export async function listNotifications(limit = 10): Promise<{
       title: n.title,
       createdAt: n.createdAt.toISOString(),
       isRead: n.isRead,
-      href: n.service ? `/clients/${n.service.clientId}#svc-${n.serviceId}` : undefined,
+      href: notificationHref(n),
     })),
   }
 }

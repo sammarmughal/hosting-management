@@ -8,6 +8,7 @@ import { SearchField } from "@/components/filters/search-field"
 import { useUrlParams } from "@/components/filters/use-url-params"
 import { REMINDER_STATUS_LABEL } from "@/components/reminder-status-badge"
 import { REMINDER_STATUSES, type ReminderLogParams } from "@/lib/list-filters"
+import type { Option } from "@/types/view"
 
 const CHANNELS = [
   { value: "email", label: "Email" },
@@ -18,8 +19,14 @@ const STATUSES = REMINDER_STATUSES.map((s) => ({
   label: REMINDER_STATUS_LABEL[s],
 }))
 
-/** Search, channel, status and date range for the reminder log; all in the URL. */
-export function ReminderLogToolbar({ params }: { params: ReminderLogParams }) {
+/** Search, company, channel, status and date range for the reminder log; all in the URL. */
+export function ReminderLogToolbar({
+  params,
+  companies,
+}: {
+  params: ReminderLogParams
+  companies: Option[]
+}) {
   const { update, pending } = useUrlParams()
   const onSearch = React.useCallback((q: string) => update({ q }), [update])
 
@@ -33,7 +40,17 @@ export function ReminderLogToolbar({ params }: { params: ReminderLogParams }) {
         placeholder="Search domain or client…"
         className="flex-1 xl:max-w-xs"
       />
-      <div className="flex gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:flex">
+        {companies.length > 0 && (
+          <FilterSelect
+            label="Company"
+            value={params.company ? String(params.company) : ""}
+            onChange={(company) => update({ company })}
+            anyLabel="All"
+            options={companies.map((c) => ({ value: String(c.id), label: c.label }))}
+            className="col-span-2 sm:flex-1 xl:w-52 xl:flex-none"
+          />
+        )}
         <FilterSelect
           label="Channel"
           value={params.channel}

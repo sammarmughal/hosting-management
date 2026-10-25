@@ -1,5 +1,9 @@
 import { z } from "zod"
-import { DEFAULT_TEMPLATES, type TemplateKey } from "@/lib/domain/default-templates"
+import {
+  DEFAULT_TEMPLATES,
+  SUBJECT_MAX,
+  type TemplateKey,
+} from "@/lib/domain/default-templates"
 import { currencySchema, DEFAULT_ENABLED_CURRENCIES } from "@/lib/domain/currency"
 import { paymentAccountsSchema } from "@/lib/domain/payment-accounts"
 import { normalisePhone } from "@/lib/domain/whatsapp"
@@ -60,14 +64,17 @@ export const emailSettingsSchema = z.object({
   fromName: z.string().trim().min(2).max(150),
 })
 export const templateSchema = z.object({
-  subject: z.string().max(1000),
+  subject: z
+    .string()
+    .max(SUBJECT_MAX, `Keep the subject under ${SUBJECT_MAX} characters`),
   body: z.string().min(1, "Enter a message body").max(20000),
 })
 
 /** PNG or JPEG only (SVG can carry scripts); about 200 KB at most. */
 export const LOGO_RE = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/
 export const LOGO_MAX_CHARS = 280_000
-const optional = (max: number) => z.string().trim().max(max, `Keep it under ${max} characters`)
+const optional = (max: number) =>
+  z.string().trim().max(max, `Keep it under ${max} characters`)
 
 // Settings → Invoices (docs/13 §11).
 export const invoiceSettingsSchema = z
@@ -111,7 +118,8 @@ export interface Preferences {
   invoices: InvoiceSettings
   templates: Record<TemplateKey, TemplateSettings>
 }
-export type PreferenceSection = "business" | "reminders" | "email" | "invoices" | TemplateKey
+export type PreferenceSection =
+  "business" | "reminders" | "email" | "invoices" | TemplateKey
 export const INITIAL_PREFERENCES: Preferences = {
   business: {
     businessName: "Rehman Web Services",

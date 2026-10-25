@@ -43,8 +43,8 @@ import {
   type RenewData,
   type RenewInput,
 } from "@/lib/domain/validation"
-import { renewServiceAction } from "@/actions/payments"
-import type { ServiceRow } from "@/types/view"
+import { renewSubscriptionAction } from "@/actions/payments"
+import type { SubscriptionRow } from "@/types/view"
 
 function daysLeftText(d: number) {
   if (d === 0) return "expires today"
@@ -59,18 +59,18 @@ function daysLeftText(d: number) {
  * with "Extend from", and a warning appears if it would still be past.
  */
 export function RenewDialog({
-  service,
+  subscription: service,
   invoice,
   open,
   onOpenChange,
   onRenewed,
 }: {
-  service: ServiceRow | null
+  subscription: SubscriptionRow | null
   /** Mark as paid (docs/13 §5): pre-fills the invoice total; renewing marks it paid. */
   invoice?: { number: string; total: string; currency: string } | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onRenewed?: (serviceId: number, newRenewalDate: ISODate) => void
+  onRenewed?: (subscriptionId: number, newRenewalDate: ISODate) => void
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -78,7 +78,7 @@ export function RenewDialog({
         {service && (
           <RenewForm
             key={service.id}
-            service={service}
+            subscription={service}
             invoice={invoice ?? null}
             onDone={(date) => {
               onRenewed?.(service.id, date)
@@ -92,11 +92,11 @@ export function RenewDialog({
 }
 
 function RenewForm({
-  service,
+  subscription: service,
   invoice,
   onDone,
 }: {
-  service: ServiceRow
+  subscription: SubscriptionRow
   invoice: { number: string; total: string; currency: string } | null
   onDone: (newRenewalDate: ISODate) => void
 }) {
@@ -115,7 +115,7 @@ function RenewForm({
   } = useForm<RenewInput, unknown, RenewData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      serviceId: service.id,
+      subscriptionId: service.id,
       amount: invoice
         ? formatAmount(invoice.total, invoice.currency)
         : formatAmount(service.chargeAmount, service.currency),
@@ -134,7 +134,7 @@ function RenewForm({
   const stillPast = newDate <= today
 
   async function onSubmit(values: RenewData) {
-    const res = await attemptAction(() => renewServiceAction(values))
+    const res = await attemptAction(() => renewSubscriptionAction(values))
     if (!res.ok) {
       for (const [field, message] of Object.entries(res.fieldErrors ?? {})) {
         setError(field as keyof RenewInput, { message })

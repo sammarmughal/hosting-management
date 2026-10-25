@@ -7,16 +7,21 @@ import { formatDatePK } from "@/lib/domain/dates"
 import {
   displayStatus,
   INVOICE_STATUS_LABEL,
-  type BillToSnapshot,
+  readBillTo,
   type SellerSnapshot,
 } from "@/lib/domain/invoices"
-import { formatMoney, MONEY_SCALE, totalsByCurrency, type CurrencyTotal } from "@/lib/domain/money"
+import {
+  formatMoney,
+  MONEY_SCALE,
+  totalsByCurrency,
+  type CurrencyTotal,
+} from "@/lib/domain/money"
 import type { InvoiceParams } from "@/lib/list-filters"
 import { prisma } from "@/lib/server/db"
 import { fromDbDate, toDbDate } from "@/lib/server/db-dates"
 import { publicInvoiceUrl } from "@/lib/server/invoices"
 import { getAppSettings } from "@/lib/server/settings"
-import { serviceInclude, toServiceRow, viewContext } from "@/lib/server/view"
+import { subscriptionInclude, toSubscriptionRow, viewContext } from "@/lib/server/view"
 import type {
   InvoiceDetail,
   InvoiceDocumentData,
@@ -27,8 +32,8 @@ import type {
 export const INVOICE_PAGE_SIZE = 25
 
 const listInclude = {
-  client: { select: { name: true, company: true, email: true } },
-  service: { select: { domain: true } },
+  client: { select: { name: true, email: true } },
+  subscription: { select: { domain: true, serviceType: { select: { name: true } } } },
 } satisfies Prisma.InvoiceInclude
 
 type ListRecord = Prisma.InvoiceGetPayload<{ include: typeof listInclude }>
@@ -40,10 +45,12 @@ function toRow(i: ListRecord, today: string): InvoiceRow {
     number: i.number,
     clientId: i.clientId,
     clientName: i.client.name,
-    company: i.client.company,
+    // The company as billed (docs/14 §5), from the snapshot.
+    company: readBillTo(i.billTo).company?.name ?? null,
     email: i.client.email,
-    serviceId: i.serviceId,
-    domain: i.service.domain,
+    subscriptionId: i.subscriptionId,
+    domain: i.subscription.domain,
+    serviceName: i.subscription.serviceType.name,
     issueDate: fromDbDate(i.issueDate),
     dueDate: due,
     total: i.total.toFixed(MONEY_SCALE),
@@ -54,7 +61,10 @@ function toRow(i: ListRecord, today: string): InvoiceRow {
   }
 }
 
-function invoiceWhere(p: Omit<InvoiceParams, "page">, today: string): Prisma.InvoiceWhereInput {
+function invoiceWhere(
+  p: Omit<InvoiceParams, "page">,
+  today: string
+): Prisma.InvoiceWhereInput {
   const ci = p.q ? ({ contains: p.q } as const) : null
   const open = { in: ["issued", "sent"] as ("issued" | "sent")[] }
   const status: Prisma.InvoiceWhereInput =
@@ -68,6 +78,7 @@ function invoiceWhere(p: Omit<InvoiceParams, "page">, today: string): Prisma.Inv
   return {
     ...status,
     ...(p.currency ? { currency: p.currency } : {}),
+    ...(p.company ? { subscription: { companyId: p.company } } : {}),
     ...(p.from || p.to
       ? {
           issueDate: {
@@ -80,9 +91,9 @@ function invoiceWhere(p: Omit<InvoiceParams, "page">, today: string): Prisma.Inv
       ? {
           OR: [
             { number: ci },
-            { service: { domain: ci } },
+            { subscription: { domain: ci } },
+            { subscription: { company: { name: ci } } },
             { client: { name: ci } },
-            { client: { company: ci } },
             { client: { email: ci } },
           ],
         }
@@ -133,7 +144,10 @@ export async function listInvoices(p: InvoiceParams): Promise<InvoiceList> {
   })
   const sums = (g: typeof invoicedSums) =>
     totalsByCurrency(
-      g.map((x) => ({ currency: x.currency, amount: (x._sum.total ?? 0).toFixed(MONEY_SCALE) })),
+      g.map((x) => ({
+        currency: x.currency,
+        amount: (x._sum.total ?? 0).toFixed(MONEY_SCALE),
+      })),
       s.defaultCurrency
     )
   return {
@@ -154,6 +168,7 @@ export interface InvoiceExportRow {
   dueDate: string
   clientName: string
   company: string | null
+  serviceName: string
   domain: string
   periodStart: string
   periodEnd: string
@@ -182,8 +197,9 @@ export async function exportInvoices(): Promise<InvoiceExportRow[]> {
     issueDate: fromDbDate(i.issueDate),
     dueDate: fromDbDate(i.dueDate),
     clientName: i.client.name,
-    company: i.client.company,
-    domain: i.service.domain,
+    company: readBillTo(i.billTo).company?.name ?? null,
+    serviceName: i.subscription.serviceType.name,
+    domain: i.subscription.domain,
     periodStart: fromDbDate(i.periodStart),
     periodEnd: fromDbDate(i.periodEnd),
     currency: i.currency,
@@ -214,7 +230,7 @@ export async function listClientInvoices(clientId: number): Promise<InvoiceRow[]
 const detailInclude = {
   items: { orderBy: { position: "asc" } },
   events: { orderBy: { createdAt: "desc" }, take: 100 },
-  service: { include: serviceInclude },
+  subscription: { include: subscriptionInclude },
   payment: { select: { paidOn: true, method: true, reference: true } },
 } satisfies Prisma.InvoiceInclude
 
@@ -243,7 +259,7 @@ function documentData(i: DetailRecord, today: string): InvoiceDocumentData {
       unitAmount: it.unitAmount.toFixed(MONEY_SCALE),
       amount: it.amount.toFixed(MONEY_SCALE),
     })),
-    billTo: i.billTo as unknown as BillToSnapshot,
+    billTo: readBillTo(i.billTo),
     seller: i.seller as unknown as SellerSnapshot,
     notes: i.notes,
     paidAt: i.paidAt ? fromDbDate(i.paidAt) : null,
@@ -251,16 +267,22 @@ function documentData(i: DetailRecord, today: string): InvoiceDocumentData {
 }
 
 const EVENT_TEXT: Record<string, (d: Record<string, unknown>) => string> = {
-  created: (d) => (d.source === "manual" ? "Invoice created by hand" : "Invoice created by the daily check"),
-  updated: () => "Updated from the service",
+  created: (d) =>
+    d.source === "manual"
+      ? "Invoice created by hand"
+      : "Invoice created by the daily check",
+  updated: () => "Updated from the subscription",
   email_sent: (d) => `Emailed to ${String(d.to ?? "the client")}`,
   email_failed: (d) => `Email to ${String(d.to ?? "the client")} failed`,
   whatsapp_opened: (d) => `WhatsApp opened for ${String(d.to ?? "the client")}`,
   whatsapp_marked_sent: () => "WhatsApp marked as sent",
   link_viewed: () => "Invoice link viewed",
-  pdf_downloaded: (d) => (d.via === "admin" ? "PDF downloaded by you" : "PDF downloaded from the link"),
+  pdf_downloaded: (d) =>
+    d.via === "admin" ? "PDF downloaded by you" : "PDF downloaded from the link",
   paid: (d) =>
-    typeof d.paidOn === "string" ? `Marked as paid (paid on ${formatDatePK(d.paidOn)})` : "Marked as paid",
+    typeof d.paidOn === "string"
+      ? `Marked as paid (paid on ${formatDatePK(d.paidOn)})`
+      : "Marked as paid",
   voided: () => "Invoice voided",
   link_regenerated: () => "Link regenerated (the old link stopped working)",
   details_refreshed: () => "Business details refreshed from Settings",
@@ -296,7 +318,7 @@ export async function getInvoice(id: number): Promise<InvoiceDetail | null> {
     id: inv.id,
     rawStatus: inv.status,
     publicUrl: publicInvoiceUrl(inv.publicToken),
-    service: toServiceRow(inv.service, ctx),
+    subscription: toSubscriptionRow(inv.subscription, ctx),
     firstSentAt: inv.firstSentAt?.toISOString() ?? null,
     voidedAt: inv.voidedAt?.toISOString() ?? null,
     voidReason: inv.voidReason,
@@ -313,7 +335,11 @@ export async function getInvoiceByToken(token: string) {
   // The collation is case-insensitive; tokens are lowercase hex, but match
   // exactly anyway so a differently-cased link never opens an invoice.
   if (!inv || inv.publicToken !== token) return null
-  return { id: inv.id, domain: inv.service.domain, document: documentData(inv, ctx.today) }
+  return {
+    id: inv.id,
+    domain: inv.subscription.domain,
+    document: documentData(inv, ctx.today),
+  }
 }
 
 /** For the authenticated PDF route. */
@@ -323,7 +349,11 @@ export async function getInvoiceDocument(id: number) {
     viewContext(),
   ])
   if (!inv) return null
-  return { id: inv.id, domain: inv.service.domain, document: documentData(inv, ctx.today) }
+  return {
+    id: inv.id,
+    domain: inv.subscription.domain,
+    document: documentData(inv, ctx.today),
+  }
 }
 
 /** Settings → Invoices: the next number is editable only before the first invoice. */

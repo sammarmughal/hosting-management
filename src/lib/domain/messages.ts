@@ -1,6 +1,7 @@
 // Rendering reminder messages (docs/08). Pure: the caller passes the
 // templates, business details and "today" in. Shared by email sending, the
 // WhatsApp links built on the server, and the tests.
+import { companyLine } from "@/lib/domain/companies"
 import { formatDatePK, type ISODate } from "@/lib/domain/dates"
 import { formatAmount, formatMoney, totalsByCurrency } from "@/lib/domain/money"
 import { paymentText, type PaymentRow } from "@/lib/domain/payment-accounts"
@@ -14,9 +15,12 @@ import {
 import { formatPhone } from "@/lib/domain/whatsapp"
 import type { Colour } from "@/types/view"
 
-export interface MessageService {
+export interface MessageSubscription {
   domain: string
+  /** The catalog name, e.g. "Web Hosting" (docs/14 §6). */
+  serviceName: string
   clientName: string
+  /** The subscription's company name, if it has one. */
   company?: string | null
   /** Normalised digits. */
   phone?: string | null
@@ -80,7 +84,7 @@ const mentionsLink = (template: string) => /\{\{?invoice_link\}?\}/.test(templat
 const mentionsPayment = (template: string) => /\{\{?payment_details\}?\}/.test(template)
 
 export function clientVars(
-  s: MessageService,
+  s: MessageSubscription,
   b: MessageBusiness,
   today: ISODate,
   invoice?: MessageInvoice | null
@@ -88,7 +92,11 @@ export function clientVars(
   return {
     ...invoiceVars(invoice),
     client_name: s.clientName,
+    company_name: s.company ?? "",
+    /** The pre-docs/14 name of company_name; saved templates still use it. */
     company: s.company ?? "",
+    company_line: companyLine(s.company),
+    service_name: s.serviceName,
     domain: s.domain,
     renewal_date: formatDatePK(s.renewalDate),
     days_left: Math.abs(s.daysLeft),
@@ -102,12 +110,12 @@ export function clientVars(
 }
 
 /**
- * Client WhatsApp text for one service (the wa.me message). With an invoice
+ * Client WhatsApp text for one subscription (the wa.me message). With an invoice
  * for the cycle, the invoice link is added unless the template places it.
  */
 export function clientWhatsappText(
   t: Template,
-  s: MessageService,
+  s: MessageSubscription,
   b: MessageBusiness,
   today: ISODate,
   invoice?: MessageInvoice | null
@@ -123,7 +131,7 @@ export function clientWhatsappText(
 /** Client email: subject, wrapped HTML body and the plain-text alternative. */
 export function clientEmail(
   t: Template,
-  s: MessageService,
+  s: MessageSubscription,
   b: MessageBusiness,
   today: ISODate,
   invoice?: MessageInvoice | null
@@ -147,14 +155,16 @@ export function clientEmail(
  */
 export function invoiceEmail(
   t: Template,
-  s: MessageService,
+  s: MessageSubscription,
   b: MessageBusiness,
   today: ISODate,
   invoice: MessageInvoice
 ) {
   const payment = paymentDetailsHtml(invoice.payment)
   const vars = { ...clientVars(s, b, today, invoice), payment_details: payment }
-  const subject = oneLine(renderTemplate(pickSection(t.subject ?? "", s.daysLeft), vars, { mode: "text" }))
+  const subject = oneLine(
+    renderTemplate(pickSection(t.subject ?? "", s.daysLeft), vars, { mode: "text" })
+  )
   let body = renderForDays(t.body, s.daysLeft, vars, {
     mode: "html",
     raw: ["summary_table", "payment_details"],
@@ -165,12 +175,14 @@ export function invoiceEmail(
 
 export function invoiceWhatsappText(
   t: Template,
-  s: MessageService,
+  s: MessageSubscription,
   b: MessageBusiness,
   today: ISODate,
   invoice: MessageInvoice
 ) {
-  const text = renderForDays(t.body, s.daysLeft, clientVars(s, b, today, invoice), { mode: "text" })
+  const text = renderForDays(t.body, s.daysLeft, clientVars(s, b, today, invoice), {
+    mode: "text",
+  })
   return mentionsLink(t.body) ? text : `${text}\n\n${invoice.link}`
 }
 
@@ -193,8 +205,11 @@ const COLOUR_HEX: Record<Colour, string> = {
   cancelled: "#6b7280",
 }
 
-const mostUrgentFirst = (services: readonly MessageService[]) =>
-  [...services].sort((a, b) => a.daysLeft - b.daysLeft)
+const mostUrgentFirst = (subs: readonly MessageSubscription[]) =>
+  [...subs].sort((a, b) => a.daysLeft - b.daysLeft)
+
+/** "Client B" or "Client B (Company B)". */
+const clientText = (s: MessageSubscription) => `${s.clientName}${companyLine(s.company)}`
 
 function whenText(days: number) {
   if (days < 0) return `expired ${-days} ${-days === 1 ? "day" : "days"} ago`
@@ -202,24 +217,27 @@ function whenText(days: number) {
   return `${days} ${days === 1 ? "day" : "days"}`
 }
 
-/** "Urgent: clientb.pk – Client B – 2 days – PKR 6,500", one line per service. */
-export function summaryList(services: readonly MessageService[]) {
-  return mostUrgentFirst(services)
+/**
+ * "Urgent: clientb.pk (Web Hosting) – Client B (Company B) – 2 days – PKR 6,500",
+ * one line per subscription.
+ */
+export function summaryList(subs: readonly MessageSubscription[]) {
+  return mostUrgentFirst(subs)
     .map(
       (s) =>
-        `${DOT[s.colour]} ${s.domain} – ${s.clientName} – ${whenText(s.daysLeft)} – ${formatMoney(s.chargeAmount, s.currency)}`
+        `${DOT[s.colour]} ${s.domain} (${s.serviceName}) – ${clientText(s)} – ${whenText(s.daysLeft)} – ${formatMoney(s.chargeAmount, s.currency)}`
     )
     .join("\n")
 }
 
 /** The admin email table, escaped here, with a total row per currency. */
-export function summaryTable(services: readonly MessageService[]) {
+export function summaryTable(subs: readonly MessageSubscription[]) {
   const cell = "padding:6px 8px;border-bottom:1px solid #e5e7eb;text-align:left"
-  const rows = mostUrgentFirst(services)
+  const rows = mostUrgentFirst(subs)
     .map(
       (s) => `<tr>
-<td style="${cell}">${escapeHtml(s.domain)}</td>
-<td style="${cell}">${escapeHtml(s.clientName)}</td>
+<td style="${cell}">${escapeHtml(s.domain)}<br><span style="font-size:12px;color:#6b7280">${escapeHtml(s.serviceName)}</span></td>
+<td style="${cell}">${escapeHtml(s.clientName)}${s.company ? `<br><span style="font-size:12px;color:#6b7280">${escapeHtml(s.company)}</span>` : ""}</td>
 <td style="${cell}">${s.phone ? escapeHtml(formatPhone(s.phone)) : "—"}</td>
 <td style="${cell}">${formatDatePK(s.renewalDate)}</td>
 <td style="${cell};color:${COLOUR_HEX[s.colour]};font-weight:600">${escapeHtml(whenText(s.daysLeft))}</td>
@@ -228,7 +246,7 @@ export function summaryTable(services: readonly MessageService[]) {
     )
     .join("\n")
   const totals = totalsByCurrency(
-    services.map((s) => ({ currency: s.currency, amount: s.chargeAmount }))
+    subs.map((s) => ({ currency: s.currency, amount: s.chargeAmount }))
   )
     .map(
       (t) => `<tr>
@@ -252,9 +270,13 @@ ${totals}
 </table>`
 }
 
-function adminVars(services: readonly MessageService[], b: MessageBusiness, today: ISODate) {
+function adminVars(
+  subs: readonly MessageSubscription[],
+  b: MessageBusiness,
+  today: ISODate
+) {
   return {
-    count: services.length,
+    count: subs.length,
     today: formatDatePK(today),
     business_name: b.businessName,
     business_phone: b.businessPhone,
@@ -263,30 +285,32 @@ function adminVars(services: readonly MessageService[], b: MessageBusiness, toda
 
 export function adminEmail(
   t: Template,
-  services: readonly MessageService[],
+  subs: readonly MessageSubscription[],
   b: MessageBusiness,
   today: ISODate
 ) {
-  const vars = { ...adminVars(services, b, today), summary_table: summaryTable(services) }
+  const vars = { ...adminVars(subs, b, today), summary_table: summaryTable(subs) }
   const subject = oneLine(renderTemplate(t.subject ?? "", vars, { mode: "text" }))
   const body = renderTemplate(t.body, vars, { mode: "html" })
-  const textVars = { ...vars, summary_table: summaryList(services) }
+  const textVars = { ...vars, summary_table: summaryList(subs) }
   return {
     subject,
     html: wrapEmail(body, b),
-    text: htmlToText(renderTemplate(t.body, textVars, { mode: "html", raw: ["summary_table"] })),
+    text: htmlToText(
+      renderTemplate(t.body, textVars, { mode: "html", raw: ["summary_table"] })
+    ),
   }
 }
 
 export function adminWhatsappText(
   t: Template,
-  services: readonly MessageService[],
+  subs: readonly MessageSubscription[],
   b: MessageBusiness,
   today: ISODate
 ) {
   return renderTemplate(
     t.body,
-    { ...adminVars(services, b, today), summary_list: summaryList(services) },
+    { ...adminVars(subs, b, today), summary_list: summaryList(subs) },
     { mode: "text" }
   )
 }

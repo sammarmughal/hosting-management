@@ -32,8 +32,12 @@ const INVOICE_PLACEHOLDERS = [
   "due_date",
   "payment_details",
 ]
+/** docs/14 §6, also written with double braces. */
+const COMPANY_PLACEHOLDERS = ["service_name", "company_name", "company_line"]
 const placeholderToken = (key: string) =>
-  INVOICE_PLACEHOLDERS.includes(key) ? `{{${key}}}` : `{${key}}`
+  INVOICE_PLACEHOLDERS.includes(key) || COMPANY_PLACEHOLDERS.includes(key)
+    ? `{{${key}}}`
+    : `{${key}}`
 
 /** Preview only: an obviously made-up account. */
 const SAMPLE_PAYMENT = [
@@ -103,6 +107,9 @@ function TemplateFields({
   const vars = {
     client_name: "Ayesha Siddiqui",
     company: "Ayesha Couture",
+    company_name: "Ayesha Couture",
+    company_line: " (Ayesha Couture)",
+    service_name: "Web Hosting",
     domain: "ayeshacouture.pk",
     renewal_date: formatDatePK(addDays(today, days)),
     days_left: Math.abs(days),
@@ -120,12 +127,15 @@ function TemplateFields({
     invoice_link: "https://renewals.rehmanweb.pk/i/Xb3…",
     invoice_total: `${business.defaultCurrency} 6,500`,
     due_date: formatDatePK(addDays(today, days)),
-    payment_details: email ? paymentDetailsHtml(SAMPLE_PAYMENT) : paymentDetailsText(SAMPLE_PAYMENT),
+    payment_details: email
+      ? paymentDetailsHtml(SAMPLE_PAYMENT)
+      : paymentDetailsText(SAMPLE_PAYMENT),
   }
   const placeholders = templateKey.startsWith("admin")
     ? ["today", "count", email ? "summary_table" : "summary_list"]
     : [
         "client_name",
+        ...COMPANY_PLACEHOLDERS,
         "domain",
         "renewal_date",
         "days_text",
