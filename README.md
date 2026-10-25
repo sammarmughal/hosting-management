@@ -26,6 +26,7 @@ The app runs no background workers. It checks for due reminders and invoices whe
 | 11 | [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) | Hostinger Node.js + MySQL/MariaDB, daily cron, go-live, backups |
 | 12 | [docs/12-DESIGN-DIRECTION.md](docs/12-DESIGN-DIRECTION.md) | Visual quality bar (wins on visuals) |
 | 13 | [docs/13-INVOICES-AND-SHARING.md](docs/13-INVOICES-AND-SHARING.md) | Invoices, PDF, public links, sharing, currency (wins on these) |
+| 14 | [docs/14-COMPANIES-AND-SUBSCRIPTIONS.md](docs/14-COMPANIES-AND-SUBSCRIPTIONS.md) | Clients → companies → subscriptions, Service Catalog, CSV, the update for Hostinger (wins on these) |
 | — | [docs/USER-GUIDE.md](docs/USER-GUIDE.md) | Owner's guide in simple English: daily routine, clients, invoices, colours, failed emails |
 | — | [docs/ui-review.md](docs/ui-review.md) | UI review log, including the one-month owner walkthrough |
 | — | [CLAUDE.md](CLAUDE.md) | Rules for the AI coding assistant |
@@ -118,14 +119,16 @@ The password is stored encrypted and never shown again (leave the field empty to
 
 ## Configure invoices
 
-**Settings → Business**: business name, an optional **tagline** (e.g. "Senior UI/UX & Product Designer"), phone, admin email and WhatsApp; the **currencies** you bill in (any ISO 4217 currency, from a searchable list; PKR, USD and AED are on by default) and the default currency for new clients. A currency used by a client or service can't be turned off.
+**Settings → Business**: business name, an optional **tagline** (e.g. "Senior UI/UX & Product Designer"), phone, admin email and WhatsApp; the **currencies** you bill in (any ISO 4217 currency, from a searchable list; PKR, USD and AED are on by default) and the default currency for new clients. A currency used by a client or subscription can't be turned off.
 
-**Currency** (docs/13 §6): no conversion. Each client has their own currency (e.g. PKR for a Pakistani client, AED for a UAE client); new services, and so their invoices and payments, start in it, and a service can override it. Decimal places follow the currency (`PKR 6,500`, `USD 49.99`, `KWD 12.500`). Totals are always shown per currency. In the CSV import, `client_currency` blank means the app default and `currency` blank means the client's currency.
+**Clients, companies and subscriptions** (docs/14): a client (who pays and gets the reminders) can have companies; each subscription belongs to the client and, optionally, one of its companies. What renews comes from the **Service Catalog** (Domain Registration, Web Hosting, Domain and Hosting, Website Maintenance, AMC by default; a type in use can only be deactivated). Invoices bill the client with the company under the name.
+
+**Currency** (docs/13 §6): no conversion. Each client has their own default currency (e.g. PKR for a Pakistani client, AED for a UAE client); new subscriptions, and so their invoices and payments, start in it, and a subscription can override it. Decimal places follow the currency (`PKR 6,500`, `USD 49.99`, `KWD 12.500`). Totals are always shown per currency. CSV import has one file each for clients, companies and subscriptions (docs/14 §9); a blank client `currency` means the app default and a blank subscription `currency` means the client's.
 
 **Settings → Invoices** (docs/13 §11):
 
 - **Number prefix** (default `INV`) → numbers like `INV-2026-0012`, a new sequence each year. The **next number** can be set until the first invoice exists.
-- **Create invoices** 15 or 30 days (default) before the renewal date, or a custom number of days. The check creates one invoice per active service per renewal; cancelled services never get one. "Create invoice now" on a service card works any time.
+- **Create invoices** 15 or 30 days (default) before the renewal date, or a custom number of days. The check creates one invoice per active subscription per renewal; cancelled subscriptions never get one. "Create invoice now" on a subscription card works any time.
 - **Logo** (optional, PNG or JPEG under 200 KB; without one the business name and tagline are shown as a text wordmark on the invoice, PDF, public page and emails, and the sidebar shows the business initials), **business address**, **NTN**, and the **footer note**: printed on the invoice and the PDF.
 - **Payment accounts**: one per bank account, with label, bank, account title, account number and/or IBAN (validated), optional SWIFT/BIC and branch code, and the currencies it is used for. Each currency can be on only one account, and the **Default** account covers every other currency. An invoice prints the account for its currency (the PDF, public page and email show only the filled fields). The JazzCash / Easypaisa number is printed on PKR invoices only (docs/13 §6a).
 - **Tax** on/off and rate, applied after any discount.
@@ -152,7 +155,7 @@ npm run check:clean-install      # a fresh copy of the repo installs with no DAT
 ```
 
 - Integration tests (`tests/integration`) use `TEST_DATABASE_URL`, migrated automatically and truncated by the tests; mail uses `jsonTransport`, and one test uses a closed port to check that real SMTP errors are stored.
-- The e2e tests (`tests/e2e`, docs/13 §12) migrate and wipe `E2E_DATABASE_URL`, seed an admin with a known TOTP secret, start a local SMTP catcher and the standalone server on port 3200, then walk client → check → invoice → email with PDF → public link → PDF download → mark as paid, and the currency flow (add a currency in Settings → a client in AED → the in-use lock).
+- The e2e tests (`tests/e2e`, docs/13 §12) migrate and wipe `E2E_DATABASE_URL`, seed an admin with a known TOTP secret, start a local SMTP catcher and the standalone server on port 3200, then walk client → subscription → check → invoice → email with PDF → public link → PDF download → mark as paid, the currency flow (add a currency in Settings → a client in AED → the in-use lock), and companies (client → company → subscription → invoice with the company → catalog lock → company delete, plus no sideways scroll at 360 px).
 - `tests/unit/action-guards.test.ts` fails if a Server Action or route handler is added without its `requireAdmin()` guard.
 
 ## Production build
@@ -178,11 +181,12 @@ See [docs/11-DEPLOYMENT.md](docs/11-DEPLOYMENT.md) for the Hostinger database, t
 | Background jobs | No workers. Checks run on dashboard load (throttled), via "Check now", and once a day from an hPanel cron job calling `/api/cron/check` with curl |
 | Email | nodemailer over Hostinger SMTP. One email per request (keeps each request short) |
 | WhatsApp | `wa.me` links with the invoice link in the text, sent by the admin with one tap. No paid API for now |
-| Invoices | One per service per renewal, numbered per year, PDF generated on demand (`@react-pdf/renderer`, Geist) |
+| Data | Client → companies (optional) → subscriptions; what renews comes from the Service Catalog. Yearly billing |
+| Invoices | One per subscription per renewal, numbered per year, the company under the client's name, PDF generated on demand (`@react-pdf/renderer`, Geist) |
 | Colours | Green > 30 days · Orange 8–30 · Red 0–7 · Expired < 0 (limits configurable) |
 | Reminder stages | 30, 15, 7, 3, 1, 0 days before; after expiry at 3, 6 and 9 days overdue |
 | Dates | `YYYY-MM-DD` strings in code, `Asia/Karachi` "today", `@db.Date` in the DB |
-| Currency | Any ISO 4217 currency, no conversion. Each client has their own currency; services start in it and can override it; totals are always per currency, never added across |
+| Currency | Any ISO 4217 currency, no conversion. Each client has their own currency; subscriptions start in it and can override it; totals are always per currency, never added across |
 
 ## Running costs (approximate, check current pricing)
 
